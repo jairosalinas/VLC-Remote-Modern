@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">VLC Remote Modern</string>
+    <string name="host_hint">IP o hostname de VLC</string>
+    <string name="port_hint">Puerto</string>
+    <string name="password_hint">Contraseña HTTP de VLC</string>
+    <string name="connect">Conectar / actualizar</string>
+    <string name="disconnected">Sin conexión</string>
+</resources>
