@@ -155,8 +155,10 @@ internal fun ControlScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TransportButton(Icons.Default.SkipPrevious, "Anterior", vm::previous)
-                        TransportButton(Icons.Default.Replay10, "Retroceder 10 segundos") { vm.seekRelative(-10) }
+                        TransportButton(Icons.Default.SkipPrevious, "Anterior", enabled = ui.connected, onClick = vm::previous)
+                        TransportButton(Icons.Default.Replay10, "Retroceder 10 segundos", enabled = ui.connected) {
+                            vm.seekRelative(-10)
+                        }
                         Surface(
                             shape = RoundedCornerShape(50),
                             color = MaterialTheme.colorScheme.primary,
@@ -171,8 +173,10 @@ internal fun ControlScreen(
                                 )
                             }
                         }
-                        TransportButton(Icons.Default.Forward10, "Avanzar 10 segundos") { vm.seekRelative(10) }
-                        TransportButton(Icons.Default.SkipNext, "Siguiente", vm::next)
+                        TransportButton(Icons.Default.Forward10, "Avanzar 10 segundos", enabled = ui.connected) {
+                            vm.seekRelative(10)
+                        }
+                        TransportButton(Icons.Default.SkipNext, "Siguiente", enabled = ui.connected, onClick = vm::next)
                     }
                     Spacer(Modifier.height(14.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
