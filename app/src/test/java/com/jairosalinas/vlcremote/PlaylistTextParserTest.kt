@@ -11,14 +11,19 @@ class PlaylistTextParserTest {
         assertEquals(listOf("http://example.test/a.ts", "http://example.test/b.ts"), result)
     }
 
-    @Test fun parsesPlsFileEntries() {
+    @Test fun parsesPlsFileEntriesAndIgnoresMetadata() {
         val result = PlaylistTextParser.parse(
-            sequenceOf("[playlist]", "File1=http://example.test/a", "Title1=A", "File2=http://example.test/b")
+            sequenceOf(
+                "[playlist]",
+                "File1=http://example.test/a",
+                "Title1=A",
+                "Length1=-1",
+                "File2=http://example.test/b",
+                "NumberOfEntries=2",
+                "Version=2"
+            )
         )
-        assertEquals(
-            listOf("[playlist]", "http://example.test/a", "Title1=A", "http://example.test/b"),
-            result
-        )
+        assertEquals(listOf("http://example.test/a", "http://example.test/b"), result)
     }
 
     @Test fun preservesLocalAndNetworkPaths() {
