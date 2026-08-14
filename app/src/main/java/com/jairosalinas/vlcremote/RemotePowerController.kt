@@ -96,7 +96,7 @@ class RemotePowerController(private val context: Context) {
     ): T {
         val host = settings.resolvedSshHost()
         val verifier = CapturingFingerprintVerifier(settings.sshHostFingerprint)
-        val ssh = createAndroidCompatibleSshClient(Build.VERSION.SDK_INT)
+        val ssh = SSHClient(createAndroidCompatibleConfig(Build.VERSION.SDK_INT))
         ssh.setConnectTimeout(CONNECT_TIMEOUT_MS)
         ssh.setTimeout(SOCKET_TIMEOUT_MS)
         ssh.addHostKeyVerifier(verifier)
@@ -225,7 +225,7 @@ class RemotePowerController(private val context: Context) {
             "curve25519-sha256@libssh.org"
         )
 
-        internal fun createAndroidCompatibleSshClient(apiLevel: Int): SSHClient {
+        internal fun createAndroidCompatibleConfig(apiLevel: Int): DefaultSecurityProviderConfig {
             // SSHJ normally registers Bouncy Castle globally. Android already exposes a provider named "BC",
             // which can make SSHJ bind X25519 to Android's stripped BC provider instead of the bundled one.
             // Keep Android's provider list untouched and use the platform JCE providers instead.
@@ -245,7 +245,7 @@ class RemotePowerController(private val context: Context) {
                 }
             }
 
-            return SSHClient(config)
+            return config
         }
 
         internal fun sha256Fingerprint(key: PublicKey): String {
