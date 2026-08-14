@@ -13,12 +13,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material3.CircularProgressIndicator
@@ -111,7 +111,7 @@ private fun BrowserRow(entry: VlcHttpClient.BrowserEntry, vm: VlcViewModel) {
         )
 
         if (entry.directory) {
-            Icon(Icons.Default.KeyboardArrowRight, contentDescription = "Abrir carpeta")
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Abrir carpeta")
         } else {
             Box {
                 IconButton(onClick = { menuExpanded = true }) {
@@ -128,7 +128,7 @@ private fun BrowserRow(entry: VlcHttpClient.BrowserEntry, vm: VlcViewModel) {
                     )
                     DropdownMenuItem(
                         text = { Text("Añadir a playlist") },
-                        leadingIcon = { Icon(Icons.Default.QueueMusic, contentDescription = null) },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null) },
                         onClick = {
                             menuExpanded = false
                             vm.enqueueBrowserEntry(entry)
