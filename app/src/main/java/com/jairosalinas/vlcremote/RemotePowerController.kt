@@ -55,10 +55,24 @@ class RemotePowerController(private val context: Context) {
         withAuthenticatedClient(settings) { ssh ->
             val check = settings.sshCheckCommand.trim()
             val running = check.isEmpty() || execute(ssh, check).exitStatus == 0
-            if (running) {
-                val stop = settings.sshStopCommand.trim()
-                require(stop.isNotEmpty()) { "Configura el comando de cierre remoto" }
-                executeChecked(ssh, stop, "No se pudo cerrar VLC")
+            if (!running) return@withAuthenticatedClient
+
+            val stop = settings.sshStopCommand.trim()
+            require(stop.isNotEmpty()) { "Configura el comando de cierre remoto" }
+            val result = execute(ssh, stop)
+            if (result.exitStatus != 0) {
+                // A process can disappear between the check and stop commands. Treat that race as a successful OFF.
+                val stillRunning = check.isEmpty() || execute(ssh, check).exitStatus == 0
+                if (stillRunning) {
+                    val detail = result.stderr.ifBlank { result.stdout }.trim().take(300)
+                    error(
+                        if (detail.isBlank()) {
+                            "No se pudo cerrar VLC (código ${result.exitStatus})"
+                        } else {
+                            "No se pudo cerrar VLC: $detail"
+                        }
+                    )
+                }
             }
         }
     }
