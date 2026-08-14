@@ -21,10 +21,13 @@ import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -63,6 +66,62 @@ internal fun ControlScreen(
     ) {
         item { ConnectionPill(ui) }
 
+        if (ui.settings.remotePowerEnabled) {
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Button(
+                            onClick = vm::toggleRemotePower,
+                            enabled = !ui.remotePowerBusy,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (ui.connected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant
+                                },
+                                contentColor = if (ui.connected) {
+                                    MaterialTheme.colorScheme.onPrimary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            ),
+                            modifier = Modifier.size(64.dp),
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.PowerSettingsNew,
+                                contentDescription = if (ui.connected) "Cerrar VLC" else "Iniciar VLC",
+                                modifier = Modifier.size(30.dp)
+                            )
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                when {
+                                    ui.remotePowerBusy -> if (ui.connected) "Cerrando VLC…" else "Iniciando VLC…"
+                                    ui.connected -> "VLC encendido"
+                                    else -> "VLC apagado"
+                                },
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                ui.sshStatusLabel ?: if (ui.connected) {
+                                    "Toca Power para cerrar VLC"
+                                } else {
+                                    "Toca Power para abrir VLC por SSH"
+                                },
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(
@@ -83,7 +142,8 @@ internal fun ControlScreen(
                         value = sliderPosition,
                         onValueChange = { sliderPosition = it },
                         onValueChangeFinished = { vm.seekTo(sliderPosition) },
-                        valueRange = 0f..1f
+                        valueRange = 0f..1f,
+                        enabled = ui.connected
                     )
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(formatTime(ui.timeSeconds), style = MaterialTheme.typography.bodySmall)
@@ -102,7 +162,7 @@ internal fun ControlScreen(
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(72.dp)
                         ) {
-                            IconButton(onClick = vm::togglePlay) {
+                            IconButton(onClick = vm::togglePlay, enabled = ui.connected) {
                                 Icon(
                                     if (ui.state == "playing") Icons.Default.Pause else Icons.Default.PlayArrow,
                                     contentDescription = if (ui.state == "playing") "Pausar" else "Reproducir",
@@ -116,12 +176,12 @@ internal fun ControlScreen(
                     }
                     Spacer(Modifier.height(14.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedButton(onClick = vm::stop) {
+                        OutlinedButton(onClick = vm::stop, enabled = ui.connected) {
                             Icon(Icons.Default.Stop, contentDescription = null)
                             Spacer(Modifier.size(6.dp))
                             Text("Detener")
                         }
-                        OutlinedButton(onClick = vm::fullscreen) {
+                        OutlinedButton(onClick = vm::fullscreen, enabled = ui.connected) {
                             Icon(Icons.Default.Fullscreen, contentDescription = null)
                             Spacer(Modifier.size(6.dp))
                             Text("Pantalla completa")
@@ -136,7 +196,7 @@ internal fun ControlScreen(
                 Column(Modifier.padding(18.dp)) {
                     Text("Volumen", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = vm::toggleMute) {
+                        IconButton(onClick = vm::toggleMute, enabled = ui.connected) {
                             Icon(
                                 if (ui.muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
                                 contentDescription = if (ui.muted) "Restaurar sonido" else "Silenciar"
@@ -147,7 +207,8 @@ internal fun ControlScreen(
                             onValueChange = { sliderVolume = it },
                             onValueChangeFinished = { vm.setVolume(sliderVolume.toInt()) },
                             valueRange = 0f..512f,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            enabled = ui.connected
                         )
                         Text("${(sliderVolume / 5.12f).toInt()}%", modifier = Modifier.padding(start = 8.dp))
                     }
