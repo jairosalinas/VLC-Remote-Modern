@@ -1,5 +1,7 @@
 package com.jairosalinas.vlcremote
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -20,7 +22,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -92,11 +93,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -121,7 +124,7 @@ private enum class MainSection {
 
 @Composable
 private fun VlcRemoteTheme(themeMode: SettingsRepository.ThemeMode, content: @Composable () -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val dark = when (themeMode) {
         SettingsRepository.ThemeMode.SYSTEM -> isSystemInDarkTheme()
         SettingsRepository.ThemeMode.DARK -> true
@@ -381,9 +384,26 @@ private fun LibraryScreen(
     padding: PaddingValues,
     openServerBrowser: () -> Unit
 ) {
+    val context = LocalContext.current
     var url by rememberSaveable { mutableStateOf("") }
     val playlistPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) vm.loadLocalPlaylist(uri)
+    }
+    val phonePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.startPhoneShare(uri)
+    }
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        phonePicker.launch(arrayOf("video/*", "audio/*", "application/octet-stream"))
+    }
+    val choosePhoneFile = {
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            phonePicker.launch(arrayOf("video/*", "audio/*", "application/octet-stream"))
+        }
     }
 
     LazyColumn(
@@ -406,14 +426,43 @@ private fun LibraryScreen(
             )
         }
         item {
-            FeatureCard(
-                icon = Icons.Default.Smartphone,
-                title = "Este teléfono",
-                subtitle = "Transmitir un archivo del teléfono al VLC remoto",
-                enabled = false,
-                badge = "Siguiente integración",
-                onClick = {}
-            )
+            if (ui.phoneShareStarting || ui.phoneShareRunning) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                ) {
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Smartphone, contentDescription = null, modifier = Modifier.size(32.dp))
+                            Spacer(Modifier.size(14.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("Este teléfono", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    if (ui.phoneShareStarting) "Preparando archivo…" else "Compartiendo con VLC",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                ui.phoneShareFileName?.let {
+                                    Text(it, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                            if (ui.phoneShareStarting) CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                        }
+                        if (ui.phoneShareRunning) {
+                            OutlinedButton(onClick = vm::stopPhoneShare, modifier = Modifier.fillMaxWidth()) {
+                                Text("Dejar de compartir")
+                            }
+                        }
+                    }
+                }
+            } else {
+                FeatureCard(
+                    icon = Icons.Default.Smartphone,
+                    title = "Este teléfono",
+                    subtitle = "Reproducir en VLC un vídeo o audio guardado en el teléfono",
+                    enabled = ui.settings.host.isNotBlank(),
+                    onClick = choosePhoneFile
+                )
+            }
         }
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -674,7 +723,11 @@ private fun PlaylistScreen(ui: VlcViewModel.UiState, vm: VlcViewModel, padding: 
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 if (isCurrent) {
-                                    Text("Reproduciendo", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                    Text(
+                                        "Reproduciendo",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
                                 }
                             }
                             Icon(
