@@ -43,7 +43,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v5
         with:
-          name: VLC-Remote-Modern-1.0-rc4-debug
+          name: VLC-Remote-Modern-1.0-rc5-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
@@ -52,7 +52,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: VLC-Remote-Modern-rc4-lint
+          name: VLC-Remote-Modern-rc5-lint
           path: app/build/reports/lint-results-debug.html
           if-no-files-found: ignore
           retention-days: 14
