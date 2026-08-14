@@ -9,14 +9,15 @@ import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.provider.OpenableColumns
+import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
-import java.io.FileInputStream
 import java.io.IOException
+import java.io.InputStream
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -80,6 +81,12 @@ class PhoneMediaShareService : Service() {
             }
         }
         return START_NOT_STICKY
+    }
+
+    @RequiresApi(35)
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        mutableState.value = ShareState(error = "Android detuvo la transferencia por alcanzar el límite del servicio en segundo plano")
+        stopSharing()
     }
 
     private fun startSharing(uri: Uri, vlcHost: String, vlcPort: Int) {
@@ -180,7 +187,10 @@ class PhoneMediaShareService : Service() {
     private fun randomToken(): String {
         val bytes = ByteArray(18)
         SecureRandom().nextBytes(bytes)
-        return android.util.Base64.encodeToString(bytes, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING)
+        return android.util.Base64.encodeToString(
+            bytes,
+            android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
+        )
     }
 
     private fun handleClient(socket: Socket, token: String, uri: Uri, metadata: FileMetadata) {
@@ -216,7 +226,7 @@ class PhoneMediaShareService : Service() {
                     return
                 }
 
-                val range = parseRange(headers["range"], metadata.size)
+                val range = HttpRangeParser.parse(headers["range"], metadata.size)
                 if (range == null && headers.containsKey("range")) {
                     writeSimpleResponse(
                         output,
@@ -228,8 +238,8 @@ class PhoneMediaShareService : Service() {
                 }
 
                 val start = range?.first ?: 0L
-                val end = range?.last ?: (metadata.size - 1)
-                val contentLength = end - start + 1
+                val end = range?.last ?: (metadata.size - 1L)
+                val contentLength = end - start + 1L
                 val status = if (range != null) "HTTP/1.1 206 Partial Content" else "HTTP/1.1 200 OK"
                 val responseHeaders = buildString {
                     append(status).append("\r\n")
@@ -246,49 +256,35 @@ class PhoneMediaShareService : Service() {
                 if (method == "HEAD") return
 
                 contentResolver.openAssetFileDescriptor(uri, "r")?.use { afd ->
-                    FileInputStream(afd.fileDescriptor).use { file ->
-                        val absoluteStart = afd.startOffset + start
-                        file.channel.position(absoluteStart)
+                    afd.createInputStream().use { mediaInput ->
+                        skipFully(mediaInput, start)
                         val buffer = ByteArray(64 * 1024)
                         var remaining = contentLength
-                        while (remaining > 0 && !stopping) {
-                            val read = file.read(buffer, 0, min(buffer.size.toLong(), remaining).toInt())
+                        while (remaining > 0L && !stopping) {
+                            val read = mediaInput.read(buffer, 0, min(buffer.size.toLong(), remaining).toInt())
                             if (read < 0) break
                             output.write(buffer, 0, read)
-                            remaining -= read
+                            remaining -= read.toLong()
                         }
                         output.flush()
                     }
                 } ?: throw IOException("No se pudo volver a abrir el archivo")
             } catch (_: IOException) {
-                // VLC can close range requests early when seeking; this is expected.
+                // VLC closes obsolete range requests while seeking; that is normal.
             }
         }
     }
 
-    private fun parseRange(header: String?, size: Long): LongRange? {
-        if (header == null) return null
-        if (!header.startsWith("bytes=", ignoreCase = true)) return null
-        val spec = header.substringAfter('=').substringBefore(',').trim()
-        val dash = spec.indexOf('-')
-        if (dash < 0) return null
-        val left = spec.substring(0, dash).trim()
-        val right = spec.substring(dash + 1).trim()
-        return try {
-            if (left.isEmpty()) {
-                val suffix = right.toLong()
-                if (suffix <= 0) return null
-                val start = (size - suffix).coerceAtLeast(0)
-                start..(size - 1)
-            } else {
-                val start = left.toLong()
-                if (start < 0 || start >= size) return null
-                val requestedEnd = if (right.isEmpty()) size - 1 else right.toLong()
-                val end = requestedEnd.coerceAtMost(size - 1)
-                if (end < start) null else start..end
+    private fun skipFully(input: InputStream, count: Long) {
+        var remaining = count
+        while (remaining > 0L) {
+            val skipped = input.skip(remaining)
+            if (skipped > 0L) {
+                remaining -= skipped
+                continue
             }
-        } catch (_: NumberFormatException) {
-            null
+            if (input.read() < 0) throw IOException("El archivo terminó antes del rango solicitado")
+            remaining--
         }
     }
 
