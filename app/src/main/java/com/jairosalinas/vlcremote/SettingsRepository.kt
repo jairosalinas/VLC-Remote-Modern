@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import androidx.core.content.edit
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -36,11 +37,11 @@ class SettingsRepository(context: Context) {
     }
 
     fun save(settings: Settings) {
-        prefs.edit()
-            .putString(KEY_HOST, settings.host.trim())
-            .putInt(KEY_PORT, settings.port)
-            .putString(KEY_THEME, settings.theme.name)
-            .apply()
+        prefs.edit {
+            putString(KEY_HOST, settings.host.trim())
+            putInt(KEY_PORT, settings.port)
+            putString(KEY_THEME, settings.theme.name)
+        }
         savePassword(settings.password)
     }
 
@@ -62,22 +63,22 @@ class SettingsRepository(context: Context) {
 
     private fun savePassword(password: String) {
         if (password.isEmpty()) {
-            prefs.edit()
-                .remove(KEY_PASSWORD_CIPHERTEXT)
-                .remove(KEY_PASSWORD_IV)
-                .remove(KEY_LEGACY_PASSWORD)
-                .apply()
+            prefs.edit {
+                remove(KEY_PASSWORD_CIPHERTEXT)
+                remove(KEY_PASSWORD_IV)
+                remove(KEY_LEGACY_PASSWORD)
+            }
             return
         }
 
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
         val encrypted = cipher.doFinal(password.toByteArray(Charsets.UTF_8))
-        prefs.edit()
-            .putString(KEY_PASSWORD_CIPHERTEXT, Base64.encodeToString(encrypted, Base64.NO_WRAP))
-            .putString(KEY_PASSWORD_IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
-            .remove(KEY_LEGACY_PASSWORD)
-            .apply()
+        prefs.edit {
+            putString(KEY_PASSWORD_CIPHERTEXT, Base64.encodeToString(encrypted, Base64.NO_WRAP))
+            putString(KEY_PASSWORD_IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+            remove(KEY_LEGACY_PASSWORD)
+        }
     }
 
     private fun decrypt(ciphertext: String, iv: String): String {
