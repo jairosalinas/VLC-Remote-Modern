@@ -59,6 +59,7 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
             createClient(saved)
             startPolling()
         }
+
         viewModelScope.launch {
             PhoneMediaShareService.state.collect { share ->
                 _uiState.value = _uiState.value.copy(
@@ -82,6 +83,7 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
             setError("Puerto inválido")
             return
         }
+
         settingsRepository.save(normalized)
         _uiState.value = _uiState.value.copy(settings = normalized, lastError = null)
         createClient(normalized)
@@ -138,13 +140,14 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
                         lastError = null
                     )
                 }
-                .onFailure { handleFailure(it) }
+                .onFailure(::handleFailure)
         }
     }
 
     fun refreshPlaylist(silent: Boolean = false) {
         val active = client ?: return
         if (!silent) _uiState.value = _uiState.value.copy(loadingPlaylist = true)
+
         viewModelScope.launch {
             runCatching { withContext(Dispatchers.IO) { active.getPlaylist() } }
                 .onSuccess { received ->
@@ -164,12 +167,10 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
     fun browseHome() = browse("file://~")
 
     fun browse(uri: String) {
-        val active = client ?: run {
-            setError("Configura primero el servidor VLC")
-            return
-        }
+        val active = requireClient() ?: return
         val target = uri.ifBlank { "file://~" }
         _uiState.value = _uiState.value.copy(loadingBrowser = true)
+
         viewModelScope.launch {
             runCatching { withContext(Dispatchers.IO) { active.browse(target) } }
                 .onSuccess { entries ->
@@ -193,8 +194,7 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun enqueueBrowserEntry(entry: VlcHttpClient.BrowserEntry) {
-        val target = entry.uri.ifBlank { entry.path }
-        playInput(target, enqueue = true)
+        playInput(entry.uri.ifBlank { entry.path }, enqueue = true)
     }
 
     fun startPhoneShare(uri: Uri) {
@@ -203,8 +203,8 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
             setError("Configura primero el servidor VLC")
             return
         }
-        _uiState.value = _uiState.value.copy(phoneShareStarting = true, lastError = null)
 
+        _uiState.value = _uiState.value.copy(phoneShareStarting = true, lastError = null)
         val application = getApplication<Application>()
         val intent = Intent(application, PhoneMediaShareService::class.java).apply {
             action = PhoneMediaShareService.ACTION_START
@@ -216,13 +216,10 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             val result = PhoneMediaShareService.state
-                .dropWhile { it.running }
+                .dropWhile { it.error != null || it.running }
                 .first { it.running || it.error != null }
-            if (result.error != null) {
-                setError(result.error)
-            } else {
-                result.url?.let { playInput(it) }
-            }
+
+            result.error?.let(::setError) ?: result.url?.let(::playInput)
         }
     }
 
@@ -245,8 +242,7 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
     fun fullscreen() = runCommand(refresh = false) { it.toggleFullscreen() }
 
     fun seekTo(fraction: Float) {
-        val percent = fraction.coerceIn(0f, 1f) * 100.0
-        runCommand(refresh = true) { it.seekPercent(percent) }
+        runCommand(refresh = true) { it.seekPercent(fraction.coerceIn(0f, 1f) * 100.0) }
     }
 
     fun setVolume(volume: Int) {
@@ -266,7 +262,7 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun clearPlaylist() = runCommand(refresh = true, after = { refreshPlaylist() }) { it.clearPlaylist() }
+    fun clearPlaylist() = runCommand(refresh = true, after = ::refreshPlaylist) { it.clearPlaylist() }
 
     fun playPlaylistItem(item: VlcHttpClient.PlaylistItem) =
         runCommand(refresh = true) { it.playItem(item.id) }
@@ -277,46 +273,36 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
             setError("Escribe una URL o ruta válida")
             return
         }
-        runCommand(refresh = true, after = { refreshPlaylist() }) {
+
+        runCommand(refresh = true, after = ::refreshPlaylist) {
             if (enqueue) it.enqueueInput(value) else it.playInput(value)
         }
     }
 
     fun loadLocalPlaylist(uri: Uri) {
-        val active = client ?: run {
-            setError("Configura primero el servidor VLC")
-            return
-        }
+        val active = requireClient() ?: return
+
         viewModelScope.launch {
             runCatching {
                 val entries = withContext(Dispatchers.IO) { readPlaylistEntries(uri) }
                 require(entries.isNotEmpty()) { "La lista no contiene elementos reproducibles" }
+
                 withContext(Dispatchers.IO) {
                     active.playInput(entries.first())
                     for (entry in entries.drop(1)) active.enqueueInput(entry)
                 }
-                entries.size
             }.onSuccess {
                 refreshStatus()
                 refreshPlaylist()
-            }.onFailure { handleFailure(it) }
+            }.onFailure(::handleFailure)
         }
     }
 
     private fun readPlaylistEntries(uri: Uri): List<String> {
         val resolver = getApplication<Application>().contentResolver
         val stream = resolver.openInputStream(uri) ?: error("No se pudo abrir la lista seleccionada")
-        return BufferedReader(InputStreamReader(stream, StandardCharsets.UTF_8)).useLines { lines ->
-            lines.map { it.trim() }
-                .filter { it.isNotEmpty() && !it.startsWith("#") }
-                .map { value ->
-                    val equals = value.indexOf('=')
-                    if (equals > 0 && value.substring(0, equals).matches(Regex("(?i)File\\d+"))) {
-                        value.substring(equals + 1).trim()
-                    } else value
-                }
-                .filter { it.isNotEmpty() }
-                .toList()
+        return BufferedReader(InputStreamReader(stream, StandardCharsets.UTF_8)).use { reader ->
+            PlaylistTextParser.parse(reader.lineSequence())
         }
     }
 
@@ -325,17 +311,21 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
         after: (() -> Unit)? = null,
         block: (VlcHttpClient) -> Unit
     ) {
-        val active = client ?: run {
-            setError("Configura primero el servidor VLC")
-            return
-        }
+        val active = requireClient() ?: return
         viewModelScope.launch {
             runCatching { withContext(Dispatchers.IO) { block(active) } }
                 .onSuccess {
                     if (refresh) refreshStatus()
                     after?.invoke()
                 }
-                .onFailure { handleFailure(it) }
+                .onFailure(::handleFailure)
+        }
+    }
+
+    private fun requireClient(): VlcHttpClient? {
+        return client ?: run {
+            setError("Configura primero el servidor VLC")
+            null
         }
     }
 
