@@ -36,22 +36,32 @@ class RemotePowerTest {
     }
 
     @Test
-    fun fingerprintIsStableSha256Format() {
+    fun rsaFingerprintIsStableSha256Format() {
         val generator = KeyPairGenerator.getInstance("RSA")
         generator.initialize(2048)
         val key = generator.generateKeyPair().public
+        assertStableFingerprint(key)
+    }
 
-        val first = RemotePowerController.sha256Fingerprint(key)
-        val second = RemotePowerController.sha256Fingerprint(key)
-
-        assertTrue(first.startsWith("SHA256:"))
-        assertFalse(first.substringAfter("SHA256:").contains('='))
-        assertEquals(first, second)
+    @Test
+    fun ed25519FingerprintIsStableSha256Format() {
+        val generator = KeyPairGenerator.getInstance("Ed25519")
+        val key = generator.generateKeyPair().public
+        assertStableFingerprint(key)
     }
 
     @Test
     fun constantTimeFingerprintComparisonHasExpectedSemantics() {
         assertTrue(RemotePowerController.constantTimeEquals("SHA256:abc", "SHA256:abc"))
         assertFalse(RemotePowerController.constantTimeEquals("SHA256:abc", "SHA256:abd"))
+    }
+
+    private fun assertStableFingerprint(key: java.security.PublicKey) {
+        val first = RemotePowerController.sha256Fingerprint(key)
+        val second = RemotePowerController.sha256Fingerprint(key)
+
+        assertTrue(first.startsWith("SHA256:"))
+        assertFalse(first.substringAfter("SHA256:").contains('='))
+        assertEquals(first, second)
     }
 }
