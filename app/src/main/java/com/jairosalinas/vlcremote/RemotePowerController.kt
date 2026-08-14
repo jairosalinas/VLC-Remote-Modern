@@ -220,6 +220,8 @@ class RemotePowerController(private val context: Context) {
         private const val SOCKET_TIMEOUT_MS = 12_000
         private const val COMMAND_TIMEOUT_SECONDS = 12L
         private const val MAX_KEY_WIPE_BYTES = 1_048_576L
+        private const val ED25519_OID = "1.3.101.112"
+        private const val ED25519_RAW_KEY_BYTES = 32
         private val CURVE25519_KEX_NAMES = setOf(
             "curve25519-sha256",
             "curve25519-sha256@libssh.org"
@@ -237,8 +239,8 @@ class RemotePowerController(private val context: Context) {
                 it.name in CURVE25519_KEX_NAMES
             }
 
-            // Android added platform Ed25519 JCA support in API 33. On older Android versions prefer
-            // ECDSA/RSA-SHA2 host keys so SSHJ does not require an external crypto provider.
+            // Android only provides a usable platform Ed25519 implementation on newer releases.
+            // Older versions negotiate ECDSA/RSA-SHA2 host keys instead.
             if (apiLevel < 33) {
                 config.keyAlgorithms = config.keyAlgorithms.filterNot {
                     it.name.contains("ed25519", ignoreCase = true)
@@ -249,9 +251,32 @@ class RemotePowerController(private val context: Context) {
         }
 
         internal fun sha256Fingerprint(key: PublicKey): String {
-            val wireKey = Buffer.PlainBuffer().putPublicKey(key).getCompactData()
+            val wireKey = sshPublicKeyBlob(key)
             val digest = MessageDigest.getInstance("SHA-256").digest(wireKey)
             return "SHA256:" + Base64.getEncoder().withoutPadding().encodeToString(digest)
+        }
+
+        internal fun sshPublicKeyBlob(key: PublicKey): ByteArray {
+            // Android 16 Conscrypt deliberately reports Ed25519 public keys with the OID 1.3.101.112
+            // instead of the strings "Ed25519"/"EdDSA". SSHJ 0.40 therefore classifies the key as
+            // UNKNOWN when Buffer.putPublicKey() is used. Encode that well-known OID explicitly using
+            // the SSH wire representation: string "ssh-ed25519" + string 32-byte raw public key.
+            if (key.algorithm == ED25519_OID) {
+                val encoded = key.encoded ?: error("La clave Ed25519 del servidor no puede codificarse")
+                require(encoded.size >= ED25519_RAW_KEY_BYTES) {
+                    "Clave Ed25519 del servidor inválida"
+                }
+                val raw = encoded.copyOfRange(
+                    encoded.size - ED25519_RAW_KEY_BYTES,
+                    encoded.size
+                )
+                return Buffer.PlainBuffer()
+                    .putString("ssh-ed25519")
+                    .putBytes(raw)
+                    .getCompactData()
+            }
+
+            return Buffer.PlainBuffer().putPublicKey(key).getCompactData()
         }
 
         internal fun constantTimeEquals(expected: String, actual: String): Boolean {
