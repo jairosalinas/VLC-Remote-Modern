@@ -6,9 +6,10 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.widget.ArrayAdapter;
+import android.util.TypedValue;
+import android.view.View;
 import android.widget.EditText;
-import android.widget.ListView;
+import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -40,10 +41,10 @@ public class MainActivity extends AppCompatActivity {
     private TextView txtConnection;
     private TextView txtNowPlaying;
     private TextView txtTime;
+    private TextView txtPlaylistEmpty;
     private SeekBar seekPosition;
     private SeekBar seekVolume;
-    private ListView listPlaylist;
-    private ArrayAdapter<VlcHttpClient.PlaylistItem> playlistAdapter;
+    private LinearLayout playlistContainer;
     private final List<VlcHttpClient.PlaylistItem> playlist = new ArrayList<>();
 
     private volatile VlcHttpClient client;
@@ -66,6 +67,7 @@ public class MainActivity extends AppCompatActivity {
         bindViews();
         restoreSettings();
         wireActions();
+        renderPlaylist();
     }
 
     @Override
@@ -105,11 +107,10 @@ public class MainActivity extends AppCompatActivity {
         txtConnection = findViewById(R.id.txtConnection);
         txtNowPlaying = findViewById(R.id.txtNowPlaying);
         txtTime = findViewById(R.id.txtTime);
+        txtPlaylistEmpty = findViewById(R.id.txtPlaylistEmpty);
         seekPosition = findViewById(R.id.seekPosition);
         seekVolume = findViewById(R.id.seekVolume);
-        listPlaylist = findViewById(R.id.listPlaylist);
-        playlistAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, playlist);
-        listPlaylist.setAdapter(playlistAdapter);
+        playlistContainer = findViewById(R.id.playlistContainer);
     }
 
     private void restoreSettings() {
@@ -135,12 +136,13 @@ public class MainActivity extends AppCompatActivity {
         commandButton(R.id.btnBack, c -> c.seekSeconds(-10));
         commandButton(R.id.btnForward, c -> c.seekSeconds(10));
         commandButton(R.id.btnFullscreen, c -> c.toggleFullscreen());
+
         commandButton(R.id.btnClearPlaylist, c -> {
             c.clearPlaylist();
             main.postDelayed(this::refreshPlaylist, 250);
         });
-        findViewById(R.id.btnRefreshPlaylist).setOnClickListener(v -> refreshPlaylist());
 
+        findViewById(R.id.btnRefreshPlaylist).setOnClickListener(v -> refreshPlaylist());
         findViewById(R.id.btnPlayUrl).setOnClickListener(v -> playMediaInput(true));
         findViewById(R.id.btnEnqueueUrl).setOnClickListener(v -> playMediaInput(false));
         findViewById(R.id.btnOpenLocalPlaylist).setOnClickListener(v -> openLocalPlaylistPicker());
@@ -163,11 +165,43 @@ public class MainActivity extends AppCompatActivity {
                 runCommand(c -> c.setVolume(seekBar.getProgress()), false);
             }
         });
+    }
 
-        listPlaylist.setOnItemClickListener((parent, view, position, id) -> {
-            VlcHttpClient.PlaylistItem item = playlist.get(position);
-            runCommand(c -> c.playItem(item.id), true);
-        });
+    private void renderPlaylist() {
+        playlistContainer.removeAllViews();
+        boolean empty = playlist.isEmpty();
+        txtPlaylistEmpty.setVisibility(empty ? View.VISIBLE : View.GONE);
+        if (empty) return;
+
+        for (VlcHttpClient.PlaylistItem item : playlist) {
+            TextView row = new TextView(this);
+            row.setText(item.name);
+            row.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(16), dp(14), dp(16), dp(14));
+            row.setMinHeight(dp(52));
+            row.setClickable(true);
+            row.setFocusable(true);
+
+            TypedValue selectable = new TypedValue();
+            if (getTheme().resolveAttribute(android.R.attr.selectableItemBackground, selectable, true)) {
+                row.setBackgroundResource(selectable.resourceId);
+            }
+
+            row.setOnClickListener(v -> runCommand(c -> c.playItem(item.id), true));
+            playlistContainer.addView(row, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT));
+
+            View divider = new View(this);
+            divider.setBackgroundColor(0x33000000);
+            playlistContainer.addView(divider, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(1)));
+        }
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
     private void openLocalPlaylistPicker() {
@@ -338,7 +372,7 @@ public class MainActivity extends AppCompatActivity {
                 main.post(() -> {
                     playlist.clear();
                     playlist.addAll(received);
-                    playlistAdapter.notifyDataSetChanged();
+                    renderPlaylist();
                 });
             } catch (Exception e) {
                 showError(e);
