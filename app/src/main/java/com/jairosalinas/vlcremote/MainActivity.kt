@@ -13,6 +13,7 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -24,6 +25,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -93,6 +95,38 @@ private fun VlcRemoteApp(vm: VlcViewModel, ui: VlcViewModel.UiState) {
             snackbar.showSnackbar(it)
             vm.consumeError()
         }
+    }
+
+    ui.pendingSshHostKey?.let { pending ->
+        AlertDialog(
+            onDismissRequest = vm::cancelPendingSshHostKey,
+            title = {
+                Text(if (pending.changed) "La identidad SSH cambió" else "Nuevo servidor SSH")
+            },
+            text = {
+                Text(
+                    buildString {
+                        append("Servidor: ${pending.host}:${pending.port}\n\n")
+                        if (pending.changed) {
+                            append("La clave guardada ya no coincide. Verifica que sigues conectándote al equipo correcto antes de reemplazarla.\n\n")
+                            append("Anterior:\n${pending.previousFingerprint}\n\n")
+                            append("Nueva:\n${pending.fingerprint}")
+                        } else {
+                            append("Comprueba la huella antes de confiar por primera vez en este servidor.\n\n")
+                            append(pending.fingerprint)
+                        }
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = vm::trustPendingSshHostKey) {
+                    Text(if (pending.changed) "Reemplazar confianza" else "Confiar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = vm::cancelPendingSshHostKey) { Text("Cancelar") }
+            }
+        )
     }
 
     val secondaryScreen = section == MainSection.SETTINGS || section == MainSection.BROWSER
