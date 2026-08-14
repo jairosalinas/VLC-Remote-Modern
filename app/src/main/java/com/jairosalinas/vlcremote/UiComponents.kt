@@ -78,8 +78,13 @@ internal fun FeatureCard(
 }
 
 @Composable
-internal fun TransportButton(icon: ImageVector, description: String, onClick: () -> Unit) {
-    IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
+internal fun TransportButton(
+    icon: ImageVector,
+    description: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(48.dp)) {
         Icon(icon, contentDescription = description, modifier = Modifier.size(28.dp))
     }
 }
