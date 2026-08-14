@@ -21,6 +21,14 @@ import java.io.InputStreamReader
 import java.nio.charset.StandardCharsets
 
 class VlcViewModel(application: Application) : AndroidViewModel(application) {
+    data class PendingSshHostKey(
+        val host: String,
+        val port: Int,
+        val fingerprint: String,
+        val changed: Boolean,
+        val previousFingerprint: String = ""
+    )
+
     data class UiState(
         val settings: SettingsRepository.Settings = SettingsRepository.Settings(),
         val connected: Boolean = false,
@@ -42,16 +50,23 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
         val phoneShareRunning: Boolean = false,
         val phoneShareUrl: String? = null,
         val phoneShareFileName: String? = null,
+        val remotePowerBusy: Boolean = false,
+        val sshStatusLabel: String? = null,
+        val pendingSshHostKey: PendingSshHostKey? = null,
         val lastError: String? = null
     )
 
+    private enum class PendingSshAction { TEST, START, STOP }
+
     private val settingsRepository = SettingsRepository(application)
+    private val remotePowerController = RemotePowerController(application)
     private val _uiState = MutableStateFlow(UiState(settings = settingsRepository.load()))
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     @Volatile private var client: VlcHttpClient? = null
     private var pollingJob: Job? = null
     private var lastNonZeroVolume = 256
+    private var pendingSshAction: PendingSshAction? = null
 
     init {
         val saved = _uiState.value.settings
@@ -74,21 +89,53 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun saveSettings(settings: SettingsRepository.Settings, testConnection: Boolean = true) {
-        val normalized = settings.copy(host = settings.host.trim())
-        if (normalized.host.isBlank()) {
-            setError("Escribe la IP o hostname del equipo que ejecuta VLC")
-            return
-        }
-        if (normalized.port !in 1..65535) {
-            setError("Puerto inválido")
+        val old = _uiState.value.settings
+        var normalized = settings.copy(
+            host = settings.host.trim(),
+            sshHost = settings.sshHost.trim(),
+            sshUsername = settings.sshUsername.trim(),
+            sshHostFingerprint = settings.sshHostFingerprint.trim()
+        )
+
+        val validation = validateSettings(normalized)
+        if (validation != null) {
+            setError(validation)
             return
         }
 
+        val oldSshIdentity = "${old.resolvedSshHost()}:${old.sshPort}"
+        val newSshIdentity = "${normalized.resolvedSshHost()}:${normalized.sshPort}"
+        if (oldSshIdentity != newSshIdentity) {
+            normalized = normalized.copy(sshHostFingerprint = "")
+        }
+
         settingsRepository.save(normalized)
-        _uiState.value = _uiState.value.copy(settings = normalized, lastError = null)
+        _uiState.value = _uiState.value.copy(
+            settings = normalized,
+            sshStatusLabel = if (oldSshIdentity != newSshIdentity) null else _uiState.value.sshStatusLabel,
+            pendingSshHostKey = null,
+            lastError = null
+        )
+        pendingSshAction = null
         createClient(normalized)
         startPolling()
         if (testConnection) refreshStatus(announce = true)
+    }
+
+    private fun validateSettings(settings: SettingsRepository.Settings): String? {
+        if (settings.host.isBlank()) return "Escribe la IP o hostname del equipo que ejecuta VLC"
+        if (settings.port !in 1..65535) return "Puerto HTTP inválido"
+        if (!settings.remotePowerEnabled) return null
+        if (settings.resolvedSshHost().isBlank()) return "Configura el servidor SSH"
+        if (settings.sshPort !in 1..65535) return "Puerto SSH inválido"
+        if (settings.sshUsername.isBlank()) return "Configura el usuario SSH"
+        if (settings.sshStartCommand.isBlank()) return "Configura el comando de inicio remoto"
+        if (settings.sshStopCommand.isBlank()) return "Configura el comando de cierre remoto"
+        if (settings.sshCheckCommand.isBlank()) return "Configura el comando de detección de VLC"
+        return when (settings.sshAuthMode) {
+            SshAuthMode.PASSWORD -> if (settings.sshPassword.isEmpty()) "Configura la contraseña SSH" else null
+            SshAuthMode.PRIVATE_KEY -> if (settings.sshPrivateKeyUri.isBlank()) "Selecciona una clave privada SSH" else null
+        }
     }
 
     fun reconnect() {
@@ -140,8 +187,23 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
                         lastError = null
                     )
                 }
-                .onFailure(::handleFailure)
+                .onFailure { error ->
+                    if (announce) handleFailure(error) else markVlcUnavailable()
+                }
         }
+    }
+
+    private fun markVlcUnavailable(label: String = "VLC no disponible") {
+        _uiState.value = _uiState.value.copy(
+            connected = false,
+            connectionLabel = label,
+            state = "unknown",
+            title = "Nada reproduciéndose",
+            timeSeconds = 0,
+            lengthSeconds = 0,
+            position = 0f,
+            currentPlaylistId = -1
+        )
     }
 
     fun refreshPlaylist(silent: Boolean = false) {
@@ -162,6 +224,192 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
                     if (!silent) handleFailure(it)
                 }
         }
+    }
+
+    fun testSsh(settings: SettingsRepository.Settings) {
+        saveSettings(settings, testConnection = false)
+        if (_uiState.value.lastError != null) return
+        executeRemotePowerAction(PendingSshAction.TEST)
+    }
+
+    fun toggleRemotePower() {
+        if (_uiState.value.remotePowerBusy) return
+        val settings = _uiState.value.settings
+        if (!settings.remotePowerEnabled) {
+            setError("Activa el control Power en Configuración")
+            return
+        }
+        executeRemotePowerAction(if (_uiState.value.connected) PendingSshAction.STOP else PendingSshAction.START)
+    }
+
+    private fun executeRemotePowerAction(action: PendingSshAction) {
+        val settings = _uiState.value.settings
+        val validation = validateSettings(settings)
+        if (validation != null) {
+            setError(validation)
+            return
+        }
+
+        pendingSshAction = action
+        _uiState.value = _uiState.value.copy(
+            remotePowerBusy = true,
+            sshStatusLabel = when (action) {
+                PendingSshAction.TEST -> "Probando conexión SSH…"
+                PendingSshAction.START -> "Iniciando VLC…"
+                PendingSshAction.STOP -> "Cerrando VLC…"
+            },
+            lastError = null
+        )
+
+        viewModelScope.launch {
+            runCatching {
+                when (action) {
+                    PendingSshAction.TEST -> {
+                        val result = withContext(Dispatchers.IO) { remotePowerController.test(settings) }
+                        _uiState.value = _uiState.value.copy(
+                            remotePowerBusy = false,
+                            sshStatusLabel = if (result.processRunning) {
+                                "SSH correcto • VLC está ejecutándose"
+                            } else {
+                                "SSH correcto • VLC no está ejecutándose"
+                            }
+                        )
+                    }
+
+                    PendingSshAction.START -> {
+                        val result = withContext(Dispatchers.IO) { remotePowerController.start(settings) }
+                        _uiState.value = _uiState.value.copy(
+                            sshStatusLabel = if (result.alreadyRunning) {
+                                "VLC ya estaba abierto • esperando HTTP…"
+                            } else {
+                                "VLC iniciado • esperando HTTP…"
+                            }
+                        )
+                        if (!waitForVlcAvailability(expected = true, timeoutMs = 20_000L)) {
+                            error("VLC se inició por SSH, pero la interfaz HTTP no respondió en 20 segundos")
+                        }
+                        _uiState.value = _uiState.value.copy(
+                            remotePowerBusy = false,
+                            sshStatusLabel = "VLC iniciado correctamente"
+                        )
+                        refreshStatus()
+                        refreshPlaylist()
+                    }
+
+                    PendingSshAction.STOP -> {
+                        withContext(Dispatchers.IO) { remotePowerController.stop(settings) }
+                        if (!waitForVlcAvailability(expected = false, timeoutMs = 15_000L)) {
+                            error("Se envió el cierre por SSH, pero VLC sigue respondiendo")
+                        }
+                        markVlcUnavailable("VLC cerrado")
+                        _uiState.value = _uiState.value.copy(
+                            remotePowerBusy = false,
+                            sshStatusLabel = "VLC cerrado correctamente"
+                        )
+                    }
+                }
+            }.onFailure { error -> handleRemotePowerFailure(error, action) }
+        }
+    }
+
+    private suspend fun waitForVlcAvailability(expected: Boolean, timeoutMs: Long): Boolean {
+        val active = client ?: return !expected
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val available = runCatching { withContext(Dispatchers.IO) { active.getStatus() } }.isSuccess
+            if (available == expected) return true
+            delay(600)
+        }
+        return false
+    }
+
+    private fun handleRemotePowerFailure(error: Throwable, action: PendingSshAction) {
+        when (error) {
+            is RemotePowerController.UnknownHostKeyException -> {
+                pendingSshAction = action
+                _uiState.value = _uiState.value.copy(
+                    remotePowerBusy = false,
+                    pendingSshHostKey = PendingSshHostKey(
+                        host = error.host,
+                        port = error.port,
+                        fingerprint = error.fingerprint,
+                        changed = false
+                    ),
+                    sshStatusLabel = "Confirma la identidad del servidor SSH"
+                )
+            }
+
+            is RemotePowerController.HostKeyChangedException -> {
+                pendingSshAction = action
+                _uiState.value = _uiState.value.copy(
+                    remotePowerBusy = false,
+                    pendingSshHostKey = PendingSshHostKey(
+                        host = error.host,
+                        port = error.port,
+                        fingerprint = error.observed,
+                        changed = true,
+                        previousFingerprint = error.expected
+                    ),
+                    sshStatusLabel = "La identidad SSH del servidor cambió"
+                )
+            }
+
+            else -> {
+                pendingSshAction = null
+                _uiState.value = _uiState.value.copy(
+                    remotePowerBusy = false,
+                    sshStatusLabel = "Error SSH",
+                    lastError = friendlySshError(error)
+                )
+            }
+        }
+    }
+
+    private fun friendlySshError(error: Throwable): String {
+        val message = error.message?.trim().orEmpty()
+        return when {
+            message.contains("Exhausted available authentication methods", ignoreCase = true) ->
+                "Autenticación SSH rechazada. Revisa usuario, contraseña o clave privada."
+            message.contains("Connection refused", ignoreCase = true) ->
+                "El servidor rechazó la conexión SSH. Revisa host y puerto."
+            message.contains("timed out", ignoreCase = true) || message.contains("timeout", ignoreCase = true) ->
+                "Tiempo de espera agotado al conectar por SSH."
+            message.isNotBlank() -> message.take(350)
+            else -> "Error SSH: ${error.javaClass.simpleName}"
+        }
+    }
+
+    fun trustPendingSshHostKey() {
+        val pending = _uiState.value.pendingSshHostKey ?: return
+        val action = pendingSshAction ?: return
+        val trusted = _uiState.value.settings.copy(sshHostFingerprint = pending.fingerprint)
+        settingsRepository.save(trusted)
+        _uiState.value = _uiState.value.copy(
+            settings = trusted,
+            pendingSshHostKey = null,
+            sshStatusLabel = "Identidad SSH guardada"
+        )
+        pendingSshAction = null
+        executeRemotePowerAction(action)
+    }
+
+    fun cancelPendingSshHostKey() {
+        pendingSshAction = null
+        _uiState.value = _uiState.value.copy(
+            pendingSshHostKey = null,
+            remotePowerBusy = false,
+            sshStatusLabel = "Verificación SSH cancelada"
+        )
+    }
+
+    fun clearTrustedSshHostKey() {
+        val updated = _uiState.value.settings.copy(sshHostFingerprint = "")
+        settingsRepository.save(updated)
+        settingsRepository.clearSshHostFingerprint()
+        _uiState.value = _uiState.value.copy(
+            settings = updated,
+            sshStatusLabel = "Identidad SSH olvidada"
+        )
     }
 
     fun browseHome() = browse("file://~")
