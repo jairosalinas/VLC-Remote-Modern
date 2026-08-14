@@ -73,8 +73,7 @@ class PhoneMediaShareService : Service() {
                 val host = intent.getStringExtra(EXTRA_VLC_HOST).orEmpty()
                 val port = intent.getIntExtra(EXTRA_VLC_PORT, 8080)
                 if (uri == null || host.isBlank()) {
-                    mutableState.value = ShareState(error = "Falta el archivo o el servidor VLC")
-                    stopSelf()
+                    fail("Falta el archivo o el servidor VLC")
                 } else {
                     startSharing(uri, host, port)
                 }
@@ -85,8 +84,7 @@ class PhoneMediaShareService : Service() {
 
     @RequiresApi(35)
     override fun onTimeout(startId: Int, fgsType: Int) {
-        mutableState.value = ShareState(error = "Android detuvo la transferencia por alcanzar el límite del servicio en segundo plano")
-        stopSharing()
+        fail("Android detuvo la transferencia por alcanzar el límite del servicio en segundo plano")
     }
 
     private fun startSharing(uri: Uri, vlcHost: String, vlcPort: Int) {
@@ -173,8 +171,15 @@ class PhoneMediaShareService : Service() {
     }
 
     private fun resolveLocalAddress(vlcHost: String, vlcPort: Int): String {
+        val cleanHost = vlcHost.trim()
+            .removePrefix("http://")
+            .removePrefix("https://")
+            .trimEnd('/')
+            .substringBefore('/')
+        require(cleanHost.isNotBlank()) { "Servidor VLC inválido" }
+
         DatagramSocket().use { socket ->
-            socket.connect(InetSocketAddress(vlcHost, vlcPort))
+            socket.connect(InetSocketAddress(cleanHost, vlcPort))
             val address: InetAddress = socket.localAddress
             val host = address.hostAddress
             require(!host.isNullOrBlank() && !address.isAnyLocalAddress && !address.isLoopbackAddress) {
@@ -380,7 +385,9 @@ class PhoneMediaShareService : Service() {
         stopping = true
         stopServerOnly()
         clients.shutdownNow()
-        mutableState.value = ShareState()
+        if (mutableState.value.error == null) {
+            mutableState.value = ShareState()
+        }
         super.onDestroy()
     }
 }
