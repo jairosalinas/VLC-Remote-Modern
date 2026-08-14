@@ -3,6 +3,7 @@ package com.jairosalinas.vlcremote
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -32,8 +34,10 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueueMusic
@@ -45,19 +49,19 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -71,8 +75,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -89,8 +91,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -114,13 +115,13 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class MainSection(val label: String) {
-    CONTROL("Control"), LIBRARY("Biblioteca"), PLAYLIST("Playlist"), SETTINGS("Configuración")
+private enum class MainSection {
+    CONTROL, LIBRARY, BROWSER, PLAYLIST, SETTINGS
 }
 
 @Composable
 private fun VlcRemoteTheme(themeMode: SettingsRepository.ThemeMode, content: @Composable () -> Unit) {
-    val context = LocalContext.current
+    val context = androidx.compose.ui.platform.LocalContext.current
     val dark = when (themeMode) {
         SettingsRepository.ThemeMode.SYSTEM -> isSystemInDarkTheme()
         SettingsRepository.ThemeMode.DARK -> true
@@ -147,54 +148,56 @@ private fun VlcRemoteApp(vm: VlcViewModel, ui: VlcViewModel.UiState) {
         }
     }
 
+    val secondaryScreen = section == MainSection.SETTINGS || section == MainSection.BROWSER
+    val title = when (section) {
+        MainSection.SETTINGS -> "Configuración"
+        MainSection.BROWSER -> "Archivos del servidor"
+        else -> "VLC Remote Modern"
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        if (section == MainSection.SETTINGS) "Configuración" else "VLC Remote Modern",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
+                title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
-                    if (section == MainSection.SETTINGS) {
-                        IconButton(onClick = { section = MainSection.CONTROL }) {
+                    if (secondaryScreen) {
+                        IconButton(onClick = {
+                            section = if (section == MainSection.BROWSER) MainSection.LIBRARY else MainSection.CONTROL
+                        }) {
                             Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
                         }
                     }
                 },
                 actions = {
-                    if (section != MainSection.SETTINGS) {
+                    if (!secondaryScreen) {
                         IconButton(onClick = { section = MainSection.SETTINGS }) {
                             Icon(Icons.Default.Settings, contentDescription = "Configuración")
                         }
                     }
-                },
-                scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+                }
             )
         },
         bottomBar = {
-            if (section != MainSection.SETTINGS) {
+            if (!secondaryScreen) {
                 NavigationBar {
                     NavigationBarItem(
                         selected = section == MainSection.CONTROL,
                         onClick = { section = MainSection.CONTROL },
-                        icon = { Icon(Icons.Default.Home, null) },
+                        icon = { Icon(Icons.Default.Home, contentDescription = null) },
                         label = { Text("Control") }
                     )
                     NavigationBarItem(
                         selected = section == MainSection.LIBRARY,
                         onClick = { section = MainSection.LIBRARY },
-                        icon = { Icon(Icons.Default.VideoLibrary, null) },
+                        icon = { Icon(Icons.Default.VideoLibrary, contentDescription = null) },
                         label = { Text("Biblioteca") }
                     )
                     NavigationBarItem(
                         selected = section == MainSection.PLAYLIST,
                         onClick = { section = MainSection.PLAYLIST },
-                        icon = { Icon(Icons.Default.QueueMusic, null) },
+                        icon = { Icon(Icons.Default.QueueMusic, contentDescription = null) },
                         label = { Text("Playlist") }
                     )
                 }
@@ -203,7 +206,16 @@ private fun VlcRemoteApp(vm: VlcViewModel, ui: VlcViewModel.UiState) {
     ) { innerPadding ->
         when (section) {
             MainSection.CONTROL -> ControlScreen(ui, vm, innerPadding) { section = MainSection.PLAYLIST }
-            MainSection.LIBRARY -> LibraryScreen(ui, vm, innerPadding)
+            MainSection.LIBRARY -> LibraryScreen(
+                ui = ui,
+                vm = vm,
+                padding = innerPadding,
+                openServerBrowser = {
+                    vm.browseHome()
+                    section = MainSection.BROWSER
+                }
+            )
+            MainSection.BROWSER -> ServerBrowserScreen(ui, vm, innerPadding)
             MainSection.PLAYLIST -> PlaylistScreen(ui, vm, innerPadding)
             MainSection.SETTINGS -> SettingsScreen(ui, vm, innerPadding) { section = MainSection.CONTROL }
         }
@@ -212,7 +224,11 @@ private fun VlcRemoteApp(vm: VlcViewModel, ui: VlcViewModel.UiState) {
 
 @Composable
 private fun ConnectionPill(ui: VlcViewModel.UiState) {
-    val color = if (ui.connected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer
+    val color = if (ui.connected) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.errorContainer
+    }
     Surface(color = color, shape = RoundedCornerShape(20.dp)) {
         Text(
             ui.connectionLabel,
@@ -238,7 +254,6 @@ private fun ControlScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item { ConnectionPill(ui) }
-
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(
@@ -293,12 +308,12 @@ private fun ControlScreen(
                     Spacer(Modifier.height(14.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         OutlinedButton(onClick = vm::stop) {
-                            Icon(Icons.Default.Stop, null)
+                            Icon(Icons.Default.Stop, contentDescription = null)
                             Spacer(Modifier.size(6.dp))
                             Text("Detener")
                         }
                         OutlinedButton(onClick = vm::fullscreen) {
-                            Icon(Icons.Default.Fullscreen, null)
+                            Icon(Icons.Default.Fullscreen, contentDescription = null)
                             Spacer(Modifier.size(6.dp))
                             Text("Pantalla completa")
                         }
@@ -306,7 +321,6 @@ private fun ControlScreen(
                 }
             }
         }
-
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(18.dp)) {
@@ -332,7 +346,6 @@ private fun ControlScreen(
                 }
             }
         }
-
         item {
             Card(
                 modifier = Modifier.fillMaxWidth().clickable(onClick = openPlaylist),
@@ -347,7 +360,7 @@ private fun ControlScreen(
                         Text("Playlist", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Text("${ui.playlist.size} elementos", style = MaterialTheme.typography.bodyMedium)
                     }
-                    Icon(Icons.Default.QueueMusic, contentDescription = null)
+                    Icon(Icons.Default.KeyboardArrowRight, contentDescription = "Abrir playlist")
                 }
             }
         }
@@ -355,19 +368,23 @@ private fun ControlScreen(
 }
 
 @Composable
-private fun TransportButton(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, onClick: () -> Unit) {
+private fun TransportButton(icon: ImageVector, description: String, onClick: () -> Unit) {
     IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
         Icon(icon, contentDescription = description, modifier = Modifier.size(28.dp))
     }
 }
 
 @Composable
-private fun LibraryScreen(ui: VlcViewModel.UiState, vm: VlcViewModel, padding: PaddingValues) {
-    val context = LocalContext.current
+private fun LibraryScreen(
+    ui: VlcViewModel.UiState,
+    vm: VlcViewModel,
+    padding: PaddingValues,
+    openServerBrowser: () -> Unit
+) {
     var url by rememberSaveable { mutableStateOf("") }
-    val playlistPicker = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri -> if (uri != null) vm.loadLocalPlaylist(uri) }
+    val playlistPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.loadLocalPlaylist(uri)
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding),
@@ -384,9 +401,9 @@ private fun LibraryScreen(ui: VlcViewModel.UiState, vm: VlcViewModel, padding: P
                 icon = Icons.Default.Folder,
                 title = "Archivos del servidor",
                 subtitle = "Explorar carpetas accesibles por el VLC remoto",
-                enabled = false,
-                badge = "En integración"
-            ) { }
+                enabled = ui.settings.host.isNotBlank(),
+                onClick = openServerBrowser
+            )
         }
         item {
             FeatureCard(
@@ -394,14 +411,15 @@ private fun LibraryScreen(ui: VlcViewModel.UiState, vm: VlcViewModel, padding: P
                 title = "Este teléfono",
                 subtitle = "Transmitir un archivo del teléfono al VLC remoto",
                 enabled = false,
-                badge = "En integración"
-            ) { }
+                badge = "Siguiente integración",
+                onClick = {}
+            )
         }
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Link, null)
+                        Icon(Icons.Default.Link, contentDescription = null)
                         Spacer(Modifier.size(10.dp))
                         Text("URL o stream", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     }
@@ -421,7 +439,11 @@ private fun LibraryScreen(ui: VlcViewModel.UiState, vm: VlcViewModel, padding: P
                         }
                     }
                     OutlinedButton(
-                        onClick = { playlistPicker.launch(arrayOf("audio/x-mpegurl", "application/vnd.apple.mpegurl", "text/plain", "*/*")) },
+                        onClick = {
+                            playlistPicker.launch(
+                                arrayOf("audio/x-mpegurl", "application/vnd.apple.mpegurl", "text/plain", "*/*")
+                            )
+                        },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Abrir M3U / M3U8 del teléfono")
@@ -434,7 +456,7 @@ private fun LibraryScreen(ui: VlcViewModel.UiState, vm: VlcViewModel, padding: P
 
 @Composable
 private fun FeatureCard(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     title: String,
     subtitle: String,
     enabled: Boolean,
@@ -444,16 +466,123 @@ private fun FeatureCard(
     Card(
         modifier = Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick),
         colors = CardDefaults.cardColors(
-            containerColor = if (enabled) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+            containerColor = if (enabled) {
+                MaterialTheme.colorScheme.surfaceVariant
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+            }
         )
     ) {
         Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, modifier = Modifier.size(32.dp))
+            Icon(icon, contentDescription = null, modifier = Modifier.size(32.dp))
             Spacer(Modifier.size(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(subtitle, style = MaterialTheme.typography.bodyMedium)
-                if (badge != null) Text(badge, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                if (badge != null) {
+                    Text(badge, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+            if (enabled) Icon(Icons.Default.KeyboardArrowRight, contentDescription = null)
+        }
+    }
+}
+
+@Composable
+private fun ServerBrowserScreen(ui: VlcViewModel.UiState, vm: VlcViewModel, padding: PaddingValues) {
+    Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Ubicación", style = MaterialTheme.typography.labelMedium)
+                Text(
+                    ui.browserUri,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            IconButton(onClick = vm::browseHome) {
+                Icon(Icons.Default.Home, contentDescription = "Carpeta inicial")
+            }
+            IconButton(onClick = { vm.browse(ui.browserUri) }) {
+                Icon(Icons.Default.Refresh, contentDescription = "Actualizar carpeta")
+            }
+        }
+        HorizontalDivider()
+        if (ui.loadingBrowser) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else if (ui.browserEntries.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Esta carpeta está vacía")
+            }
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                itemsIndexed(
+                    items = ui.browserEntries,
+                    key = { index, entry -> "${entry.uri}|${entry.path}|$index" }
+                ) { _, entry ->
+                    BrowserRow(entry, vm)
+                    HorizontalDivider()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BrowserRow(entry: VlcHttpClient.BrowserEntry, vm: VlcViewModel) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { vm.openBrowserEntry(entry) }
+            .padding(start = 16.dp, top = 10.dp, bottom = 10.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            if (entry.directory) Icons.Default.Folder else Icons.Default.VideoFile,
+            contentDescription = null,
+            modifier = Modifier.size(30.dp),
+            tint = if (entry.directory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.size(14.dp))
+        Text(
+            entry.name,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyLarge,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (entry.directory) {
+            Icon(Icons.Default.KeyboardArrowRight, contentDescription = "Abrir carpeta")
+        } else {
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "Opciones de ${entry.name}")
+                }
+                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Reproducir ahora") },
+                        leadingIcon = { Icon(Icons.Default.PlayArrow, contentDescription = null) },
+                        onClick = {
+                            menuExpanded = false
+                            vm.openBrowserEntry(entry)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Añadir a playlist") },
+                        leadingIcon = { Icon(Icons.Default.QueueMusic, contentDescription = null) },
+                        onClick = {
+                            menuExpanded = false
+                            vm.enqueueBrowserEntry(entry)
+                        }
+                    )
+                }
             }
         }
     }
@@ -467,34 +596,53 @@ private fun PlaylistScreen(ui: VlcViewModel.UiState, vm: VlcViewModel, padding: 
     }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val currentIndex = remember(ui.playlist, ui.currentPlaylistId) {
+        ui.playlist.indexOfFirst { it.id == ui.currentPlaylistId || it.current }
+    }
 
     Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp),
+            label = { Text("Buscar en ${ui.playlist.size} elementos") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            trailingIcon = {
+                if (query.isNotBlank()) {
+                    IconButton(onClick = { query = "" }) {
+                        Icon(Icons.Default.Clear, contentDescription = "Borrar búsqueda")
+                    }
+                }
+            },
+            singleLine = true
+        )
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                modifier = Modifier.weight(1f),
-                label = { Text("Buscar en ${ui.playlist.size} elementos") },
-                leadingIcon = { Icon(Icons.Default.Search, null) },
-                trailingIcon = {
-                    if (query.isNotBlank()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Clear, "Borrar búsqueda") }
-                },
-                singleLine = true
-            )
-            IconButton(onClick = vm::refreshPlaylist) { Icon(Icons.Default.Refresh, "Actualizar playlist") }
-            IconButton(onClick = vm::clearPlaylist) { Icon(Icons.Default.DeleteSweep, "Vaciar playlist") }
+            if (currentIndex >= 0 && query.isBlank()) {
+                OutlinedButton(onClick = {
+                    scope.launch { listState.animateScrollToItem(currentIndex) }
+                }) {
+                    Icon(Icons.Default.MyLocation, contentDescription = null)
+                    Spacer(Modifier.size(6.dp))
+                    Text("Ir al actual")
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = vm::refreshPlaylist) {
+                Icon(Icons.Default.Refresh, contentDescription = "Actualizar playlist")
+            }
+            IconButton(onClick = vm::clearPlaylist) {
+                Icon(Icons.Default.DeleteSweep, contentDescription = "Vaciar playlist")
+            }
         }
-
+        HorizontalDivider()
         if (ui.loadingPlaylist) {
             Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
         }
-
         if (filtered.isEmpty() && !ui.loadingPlaylist) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(if (query.isBlank()) "La playlist está vacía" else "No hay coincidencias")
@@ -502,15 +650,41 @@ private fun PlaylistScreen(ui: VlcViewModel.UiState, vm: VlcViewModel, padding: 
         } else {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 itemsIndexed(filtered, key = { _, item -> item.id }) { index, item ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable { vm.playPlaylistItem(item) }.padding(horizontal = 18.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    val isCurrent = item.id == ui.currentPlaylistId || item.current
+                    Surface(
+                        color = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
                     ) {
-                        Text("${index + 1}", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(end = 14.dp))
-                        Text(item.name, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Icon(Icons.Default.PlayArrow, contentDescription = "Reproducir ${item.name}")
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { vm.playPlaylistItem(item) }
+                                .padding(horizontal = 18.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "${index + 1}",
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(end = 14.dp)
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    item.name,
+                                    fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (isCurrent) {
+                                    Text("Reproduciendo", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                            Icon(
+                                Icons.Default.PlayArrow,
+                                contentDescription = "Reproducir ${item.name}",
+                                tint = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
-                    Divider()
+                    HorizontalDivider()
                 }
             }
         }
@@ -535,9 +709,7 @@ private fun SettingsScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item {
-            Text("Conexión VLC", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        }
+        item { Text("Conexión VLC", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
         item {
             OutlinedTextField(
                 value = host,
@@ -581,17 +753,18 @@ private fun SettingsScreen(
                 ) { Text("Probar") }
                 Button(
                     onClick = {
-                        vm.saveSettings(SettingsRepository.Settings(host, port.toIntOrNull() ?: 0, password, theme), true)
+                        vm.saveSettings(
+                            SettingsRepository.Settings(host, port.toIntOrNull() ?: 0, password, theme),
+                            testConnection = true
+                        )
                         done()
                     },
                     modifier = Modifier.weight(1f)
                 ) { Text("Guardar") }
             }
         }
-        item { Divider() }
-        item {
-            Text("Apariencia", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        }
+        item { HorizontalDivider() }
+        item { Text("Apariencia", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
         item {
             Box {
                 OutlinedButton(onClick = { themeMenu = true }, modifier = Modifier.fillMaxWidth()) {
@@ -610,7 +783,7 @@ private fun SettingsScreen(
                 }
             }
         }
-        item { Divider() }
+        item { HorizontalDivider() }
         item {
             Text("Acerca de", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
@@ -632,6 +805,9 @@ private fun formatTime(totalSeconds: Int): String {
     val hours = safe / 3600
     val minutes = (safe % 3600) / 60
     val seconds = safe % 60
-    return if (hours > 0) String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
-    else String.format(Locale.US, "%02d:%02d", minutes, seconds)
+    return if (hours > 0) {
+        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.US, "%02d:%02d", minutes, seconds)
+    }
 }
