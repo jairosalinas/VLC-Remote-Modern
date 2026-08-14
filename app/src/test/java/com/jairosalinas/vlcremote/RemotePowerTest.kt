@@ -6,6 +6,7 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.security.KeyPairGenerator
+import java.security.PublicKey
 
 class RemotePowerTest {
     @Test
@@ -74,17 +75,41 @@ class RemotePowerTest {
     }
 
     @Test
+    fun androidConscryptOidEd25519FingerprintMatchesStandardEd25519() {
+        val generator = KeyPairGenerator.getInstance("Ed25519")
+        val standard = generator.generateKeyPair().public
+        val androidStyle = AndroidOidEd25519PublicKey(standard)
+
+        assertEquals(
+            RemotePowerController.sha256Fingerprint(standard),
+            RemotePowerController.sha256Fingerprint(androidStyle)
+        )
+        assertEquals(
+            RemotePowerController.sshPublicKeyBlob(standard).toList(),
+            RemotePowerController.sshPublicKeyBlob(androidStyle).toList()
+        )
+    }
+
+    @Test
     fun constantTimeFingerprintComparisonHasExpectedSemantics() {
         assertTrue(RemotePowerController.constantTimeEquals("SHA256:abc", "SHA256:abc"))
         assertFalse(RemotePowerController.constantTimeEquals("SHA256:abc", "SHA256:abd"))
     }
 
-    private fun assertStableFingerprint(key: java.security.PublicKey) {
+    private fun assertStableFingerprint(key: PublicKey) {
         val first = RemotePowerController.sha256Fingerprint(key)
         val second = RemotePowerController.sha256Fingerprint(key)
 
         assertTrue(first.startsWith("SHA256:"))
         assertFalse(first.substringAfter("SHA256:").contains('='))
         assertEquals(first, second)
+    }
+
+    private class AndroidOidEd25519PublicKey(
+        private val delegate: PublicKey
+    ) : PublicKey {
+        override fun getAlgorithm(): String = "1.3.101.112"
+        override fun getFormat(): String = delegate.format
+        override fun getEncoded(): ByteArray = delegate.encoded.clone()
     }
 }
