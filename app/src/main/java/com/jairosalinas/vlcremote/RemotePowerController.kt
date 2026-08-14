@@ -1,7 +1,9 @@
 package com.jairosalinas.vlcremote
 
 import android.content.Context
+import android.os.Build
 import androidx.core.net.toUri
+import net.schmizz.sshj.DefaultSecurityProviderConfig
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.common.Buffer
 import net.schmizz.sshj.transport.verification.HostKeyVerifier
@@ -94,7 +96,7 @@ class RemotePowerController(private val context: Context) {
     ): T {
         val host = settings.resolvedSshHost()
         val verifier = CapturingFingerprintVerifier(settings.sshHostFingerprint)
-        val ssh = SSHClient()
+        val ssh = createAndroidCompatibleSshClient(Build.VERSION.SDK_INT)
         ssh.setConnectTimeout(CONNECT_TIMEOUT_MS)
         ssh.setTimeout(SOCKET_TIMEOUT_MS)
         ssh.addHostKeyVerifier(verifier)
@@ -218,6 +220,33 @@ class RemotePowerController(private val context: Context) {
         private const val SOCKET_TIMEOUT_MS = 12_000
         private const val COMMAND_TIMEOUT_SECONDS = 12L
         private const val MAX_KEY_WIPE_BYTES = 1_048_576L
+        private val CURVE25519_KEX_NAMES = setOf(
+            "curve25519-sha256",
+            "curve25519-sha256@libssh.org"
+        )
+
+        internal fun createAndroidCompatibleSshClient(apiLevel: Int): SSHClient {
+            // SSHJ normally registers Bouncy Castle globally. Android already exposes a provider named "BC",
+            // which can make SSHJ bind X25519 to Android's stripped BC provider instead of the bundled one.
+            // Keep Android's provider list untouched and use the platform JCE providers instead.
+            val config = DefaultSecurityProviderConfig()
+
+            // Curve25519 in SSHJ asks specifically for the JCA algorithm "X25519". Removing these KEX
+            // factories avoids the Android/BC provider collision while retaining ECDH and modern DH SHA-2 KEX.
+            config.keyExchangeFactories = config.keyExchangeFactories.filterNot {
+                it.name in CURVE25519_KEX_NAMES
+            }
+
+            // Android added platform Ed25519 JCA support in API 33. On older Android versions prefer
+            // ECDSA/RSA-SHA2 host keys so SSHJ does not require an external crypto provider.
+            if (apiLevel < 33) {
+                config.keyAlgorithms = config.keyAlgorithms.filterNot {
+                    it.name.contains("ed25519", ignoreCase = true)
+                }
+            }
+
+            return SSHClient(config)
+        }
 
         internal fun sha256Fingerprint(key: PublicKey): String {
             val wireKey = Buffer.PlainBuffer().putPublicKey(key).getCompactData()
