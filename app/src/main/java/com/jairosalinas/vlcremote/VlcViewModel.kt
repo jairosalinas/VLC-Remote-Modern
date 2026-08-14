@@ -219,7 +219,11 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
                 .dropWhile { it.error != null || it.running }
                 .first { it.running || it.error != null }
 
-            result.error?.let(::setError) ?: result.url?.let(::playInput)
+            if (result.error != null) {
+                setError(result.error)
+            } else {
+                result.url?.let { url -> playInput(url) }
+            }
         }
     }
 
@@ -262,7 +266,7 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun clearPlaylist() = runCommand(refresh = true, after = ::refreshPlaylist) { it.clearPlaylist() }
+    fun clearPlaylist() = runCommand(refresh = true, after = { refreshPlaylist() }) { it.clearPlaylist() }
 
     fun playPlaylistItem(item: VlcHttpClient.PlaylistItem) =
         runCommand(refresh = true) { it.playItem(item.id) }
@@ -274,7 +278,7 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        runCommand(refresh = true, after = ::refreshPlaylist) {
+        runCommand(refresh = true, after = { refreshPlaylist() }) {
             if (enqueue) it.enqueueInput(value) else it.playInput(value)
         }
     }
