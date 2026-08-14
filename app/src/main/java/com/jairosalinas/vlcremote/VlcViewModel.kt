@@ -29,8 +29,12 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
         val position: Float = 0f,
         val volume: Int = 0,
         val muted: Boolean = false,
+        val currentPlaylistId: Int = -1,
         val playlist: List<VlcHttpClient.PlaylistItem> = emptyList(),
         val loadingPlaylist: Boolean = false,
+        val browserUri: String = "file://~",
+        val browserEntries: List<VlcHttpClient.BrowserEntry> = emptyList(),
+        val loadingBrowser: Boolean = false,
         val lastError: String? = null
     )
 
@@ -112,6 +116,7 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
                         position = status.position.toFloat().coerceIn(0f, 1f),
                         volume = status.volume.coerceIn(0, 512),
                         muted = status.volume == 0,
+                        currentPlaylistId = status.currentPlaylistId,
                         lastError = null
                     )
                 }
@@ -138,6 +143,42 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun browseHome() = browse("file://~")
+
+    fun browse(uri: String) {
+        val active = client ?: run {
+            setError("Configura primero el servidor VLC")
+            return
+        }
+        val target = uri.ifBlank { "file://~" }
+        _uiState.value = _uiState.value.copy(loadingBrowser = true)
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { active.browse(target) } }
+                .onSuccess { entries ->
+                    _uiState.value = _uiState.value.copy(
+                        browserUri = target,
+                        browserEntries = entries,
+                        loadingBrowser = false,
+                        lastError = null
+                    )
+                }
+                .onFailure {
+                    _uiState.value = _uiState.value.copy(loadingBrowser = false)
+                    handleFailure(it)
+                }
+        }
+    }
+
+    fun openBrowserEntry(entry: VlcHttpClient.BrowserEntry) {
+        val target = entry.uri.ifBlank { entry.path }
+        if (entry.directory) browse(target) else playInput(target)
+    }
+
+    fun enqueueBrowserEntry(entry: VlcHttpClient.BrowserEntry) {
+        val target = entry.uri.ifBlank { entry.path }
+        if (entry.directory) playInput(target, enqueue = true) else playInput(target, enqueue = true)
+    }
+
     fun togglePlay() = runCommand(refresh = true) { it.togglePlay() }
     fun stop() = runCommand(refresh = true) { it.stop() }
     fun previous() = runCommand(refresh = true) { it.previous() }
@@ -146,7 +187,7 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
     fun fullscreen() = runCommand(refresh = false) { it.toggleFullscreen() }
 
     fun seekTo(fraction: Float) {
-        val percent = (fraction.coerceIn(0f, 1f) * 100.0)
+        val percent = fraction.coerceIn(0f, 1f) * 100.0
         runCommand(refresh = true) { it.seekPercent(percent) }
     }
 
@@ -194,7 +235,7 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
                 require(entries.isNotEmpty()) { "La lista no contiene elementos reproducibles" }
                 withContext(Dispatchers.IO) {
                     active.playInput(entries.first())
-                    entries.drop(1).forEach(active::enqueueInput)
+                    for (entry in entries.drop(1)) active.enqueueInput(entry)
                 }
                 entries.size
             }.onSuccess {
