@@ -101,7 +101,7 @@ internal fun ControlScreen(
                         Column(Modifier.weight(1f)) {
                             Text(
                                 when {
-                                    ui.remotePowerBusy -> if (ui.connected) "Cerrando VLC…" else "Iniciando VLC…"
+                                    ui.remotePowerBusy -> ui.sshStatusLabel ?: "Procesando Power…"
                                     ui.connected -> "VLC encendido"
                                     else -> "VLC apagado"
                                 },
@@ -109,10 +109,14 @@ internal fun ControlScreen(
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                ui.sshStatusLabel ?: if (ui.connected) {
-                                    "Toca Power para cerrar VLC"
+                                if (ui.remotePowerBusy) {
+                                    "Espera a que termine la operación remota"
                                 } else {
-                                    "Toca Power para abrir VLC por SSH"
+                                    ui.sshStatusLabel ?: if (ui.connected) {
+                                        "Toca Power para cerrar VLC"
+                                    } else {
+                                        "Toca Power para abrir VLC por SSH"
+                                    }
                                 },
                                 style = MaterialTheme.typography.bodySmall
                             )
