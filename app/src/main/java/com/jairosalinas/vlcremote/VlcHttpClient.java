@@ -106,6 +106,14 @@ final class VlcHttpClient {
         command("pl_play", "id", Integer.toString(id));
     }
 
+    void playInput(String input) throws IOException {
+        command("in_play", "input", requireInput(input));
+    }
+
+    void enqueueInput(String input) throws IOException {
+        command("in_enqueue", "input", requireInput(input));
+    }
+
     void seekSeconds(int seconds) throws IOException {
         String value = (seconds >= 0 ? "+" : "") + seconds;
         command("seek", "val", value);
@@ -169,7 +177,10 @@ final class VlcHttpClient {
             }
             int id = node.optInt("id", -1);
             if (id < 0) continue;
-            String name = firstNonBlank(node.optString("name", ""), node.optString("uri", ""), "Elemento " + id);
+            String name = firstNonBlank(
+                    node.optString("name", ""),
+                    node.optString("uri", ""),
+                    "Elemento " + id);
             out.add(new PlaylistItem(id, name));
         }
     }
@@ -182,6 +193,12 @@ final class VlcHttpClient {
             while ((line = reader.readLine()) != null) out.append(line).append('\n');
             return out.toString();
         }
+    }
+
+    private static String requireInput(String input) throws IOException {
+        String value = input == null ? "" : input.trim();
+        if (value.isEmpty()) throw new IOException("La URL o ruta está vacía");
+        return value;
     }
 
     private static String urlEncode(String value) {

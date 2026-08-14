@@ -1,13 +1,12 @@
 package com.jairosalinas.vlcremote;
 
+import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.InputType;
-import android.view.View;
 import android.widget.ArrayAdapter;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.SeekBar;
@@ -16,6 +15,10 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -25,6 +28,7 @@ import java.util.concurrent.Executors;
 public class MainActivity extends AppCompatActivity {
     private static final String PREFS = "vlc_remote_settings";
     private static final long STATUS_REFRESH_MS = 2500;
+    private static final int REQUEST_OPEN_PLAYLIST = 1001;
 
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -32,6 +36,7 @@ public class MainActivity extends AppCompatActivity {
     private EditText editHost;
     private EditText editPort;
     private EditText editPassword;
+    private EditText editMediaUrl;
     private TextView txtConnection;
     private TextView txtNowPlaying;
     private TextView txtTime;
@@ -84,10 +89,19 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
     }
 
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_OPEN_PLAYLIST || resultCode != RESULT_OK || data == null) return;
+        Uri uri = data.getData();
+        if (uri != null) loadLocalPlaylist(uri);
+    }
+
     private void bindViews() {
         editHost = findViewById(R.id.editHost);
         editPort = findViewById(R.id.editPort);
         editPassword = findViewById(R.id.editPassword);
+        editMediaUrl = findViewById(R.id.editMediaUrl);
         txtConnection = findViewById(R.id.txtConnection);
         txtNowPlaying = findViewById(R.id.txtNowPlaying);
         txtTime = findViewById(R.id.txtTime);
@@ -127,6 +141,10 @@ public class MainActivity extends AppCompatActivity {
         });
         findViewById(R.id.btnRefreshPlaylist).setOnClickListener(v -> refreshPlaylist());
 
+        findViewById(R.id.btnPlayUrl).setOnClickListener(v -> playMediaInput(true));
+        findViewById(R.id.btnEnqueueUrl).setOnClickListener(v -> playMediaInput(false));
+        findViewById(R.id.btnOpenLocalPlaylist).setOnClickListener(v -> openLocalPlaylistPicker());
+
         seekPosition.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) { }
             @Override public void onStartTrackingTouch(SeekBar seekBar) { userChangingPosition = true; }
@@ -152,6 +170,84 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    private void openLocalPlaylistPicker() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        startActivityForResult(intent, REQUEST_OPEN_PLAYLIST);
+    }
+
+    private void playMediaInput(boolean startPlaying) {
+        String input = editMediaUrl.getText().toString().trim();
+        if (input.isEmpty()) {
+            toast("Escribe una URL, M3U/M3U8 o ruta accesible por el VLC remoto");
+            return;
+        }
+
+        runCommand(c -> {
+            if (startPlaying) c.playInput(input);
+            else c.enqueueInput(input);
+        }, true, () -> {
+            toast(startPlaying ? "Contenido enviado a VLC" : "Añadido a la playlist");
+            main.postDelayed(this::refreshPlaylist, 800);
+        });
+    }
+
+    private void loadLocalPlaylist(Uri uri) {
+        if (uri == null) return;
+
+        VlcHttpClient active = client;
+        if (active == null && !createClientFromFields(true)) return;
+        active = client;
+        VlcHttpClient finalClient = active;
+
+        io.execute(() -> {
+            try {
+                List<String> entries = readPlaylistEntries(uri);
+                if (entries.isEmpty()) {
+                    main.post(() -> toast("La lista no contiene elementos reproducibles"));
+                    return;
+                }
+
+                finalClient.playInput(entries.get(0));
+                for (int i = 1; i < entries.size(); i++) {
+                    finalClient.enqueueInput(entries.get(i));
+                }
+
+                main.post(() -> {
+                    toast("Lista cargada: " + entries.size() + " elementos");
+                    refreshStatus(false);
+                    main.postDelayed(this::refreshPlaylist, 800);
+                });
+            } catch (Exception e) {
+                showError(e);
+            }
+        });
+    }
+
+    private List<String> readPlaylistEntries(Uri uri) throws Exception {
+        List<String> entries = new ArrayList<>();
+        InputStream stream = getContentResolver().openInputStream(uri);
+        if (stream == null) throw new IllegalStateException("No se pudo abrir la lista seleccionada");
+
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String value = line.trim();
+                if (value.isEmpty() || value.startsWith("#")) continue;
+
+                int equals = value.indexOf('=');
+                if (equals > 0 && value.substring(0, equals).matches("(?i)File\\d+")) {
+                    value = value.substring(equals + 1).trim();
+                }
+
+                if (!value.isEmpty()) entries.add(value);
+            }
+        }
+        return entries;
+    }
+
     private interface ClientCommand { void run(VlcHttpClient client) throws Exception; }
 
     private void commandButton(int id, ClientCommand command) {
@@ -161,7 +257,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean createClientFromFields(boolean persist) {
         String host = editHost.getText().toString().trim();
         String portText = editPort.getText().toString().trim();
-        if (host.trim().isEmpty()) {
+        if (host.isEmpty()) {
             toast("Escribe la IP o hostname del equipo que ejecuta VLC");
             return false;
         }
@@ -190,6 +286,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void runCommand(ClientCommand command, boolean refreshAfter) {
+        runCommand(command, refreshAfter, null);
+    }
+
+    private void runCommand(ClientCommand command, boolean refreshAfter, Runnable onSuccess) {
         VlcHttpClient active = client;
         if (active == null && !createClientFromFields(true)) return;
         active = client;
@@ -197,6 +297,7 @@ public class MainActivity extends AppCompatActivity {
         io.execute(() -> {
             try {
                 command.run(finalClient);
+                if (onSuccess != null) main.post(onSuccess);
                 if (refreshAfter) main.postDelayed(() -> refreshStatus(false), 200);
             } catch (Exception e) {
                 showError(e);

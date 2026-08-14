@@ -1,163 +1,249 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true"
-    android:fitsSystemWindows="true">
+    android:fitsSystemWindows="true"
+    android:orientation="vertical">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="3"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="VLC Remote Modern"
+                android:textSize="26sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/txtConnection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/disconnected" />
+
+            <EditText
+                android:id="@+id/editHost"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:hint="@string/host_hint"
+                android:inputType="textUri"
+                android:singleLine="true" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <EditText
+                    android:id="@+id/editPort"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="@string/port_hint"
+                    android:inputType="number"
+                    android:text="8080" />
+
+                <EditText
+                    android:id="@+id/editPassword"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="2"
+                    android:hint="@string/password_hint"
+                    android:inputType="textPassword"
+                    android:singleLine="true" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnConnect"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/connect" />
+
+            <TextView
+                android:id="@+id/txtNowPlaying"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Nada reproduciéndose"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/txtTime"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="00:00 / 00:00" />
+
+            <SeekBar
+                android:id="@+id/seekPosition"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="1000" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnPrev"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="⏮" />
+
+                <Button
+                    android:id="@+id/btnBack"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="-10s" />
+
+                <Button
+                    android:id="@+id/btnPlayPause"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="⏯" />
+
+                <Button
+                    android:id="@+id/btnForward"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="+10s" />
+
+                <Button
+                    android:id="@+id/btnNext"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="⏭" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnStop"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Stop" />
+
+                <Button
+                    android:id="@+id/btnFullscreen"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Pantalla completa" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Volumen" />
+
+            <SeekBar
+                android:id="@+id/seekVolume"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="512" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Abrir contenido"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/editMediaUrl"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="URL, M3U/M3U8 de Internet o ruta accesible por VLC"
+                android:inputType="textUri"
+                android:singleLine="true" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnPlayUrl"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Reproducir URL" />
+
+                <Button
+                    android:id="@+id/btnEnqueueUrl"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Añadir a playlist" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnOpenLocalPlaylist"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Abrir lista M3U/M3U8 local" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Una lista local del teléfono puede contener URLs o rutas que el VLC remoto pueda abrir. La app no transfiere archivos de vídeo del teléfono al PC."
+                android:textSize="12sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Código derivado conceptualmente de VlcFreemote (GPL-3.0). Sin telemetría ni permisos ajenos a Internet."
+                android:textSize="12sp" />
+
+        </LinearLayout>
+    </ScrollView>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#33000000" />
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="0dp"
+        android:layout_weight="2"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:paddingStart="16dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="8dp">
 
         <TextView
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="VLC Remote Modern"
-            android:textSize="26sp"
+            android:text="Playlist de VLC"
+            android:textSize="18sp"
             android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/txtConnection"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="@string/disconnected" />
-
-        <EditText
-            android:id="@+id/editHost"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:hint="@string/host_hint"
-            android:inputType="textUri"
-            android:singleLine="true" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <EditText
-                android:id="@+id/editPort"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="@string/port_hint"
-                android:inputType="number"
-                android:text="8080" />
-
-            <EditText
-                android:id="@+id/editPassword"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="2"
-                android:hint="@string/password_hint"
-                android:inputType="textPassword"
-                android:singleLine="true" />
-        </LinearLayout>
-
-        <Button
-            android:id="@+id/btnConnect"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/connect" />
-
-        <TextView
-            android:id="@+id/txtNowPlaying"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Nada reproduciéndose"
-            android:textSize="20sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/txtTime"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="00:00 / 00:00" />
-
-        <SeekBar
-            android:id="@+id/seekPosition"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="1000" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/btnPrev"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="⏮" />
-
-            <Button
-                android:id="@+id/btnBack"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="-10s" />
-
-            <Button
-                android:id="@+id/btnPlayPause"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="⏯" />
-
-            <Button
-                android:id="@+id/btnForward"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="+10s" />
-
-            <Button
-                android:id="@+id/btnNext"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="⏭" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/btnStop"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Stop" />
-
-            <Button
-                android:id="@+id/btnFullscreen"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Pantalla completa" />
-        </LinearLayout>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="Volumen" />
-
-        <SeekBar
-            android:id="@+id/seekVolume"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="512" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -169,28 +255,24 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Actualizar playlist" />
+                android:text="Actualizar" />
 
             <Button
                 android:id="@+id/btnClearPlaylist"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Vaciar playlist" />
+                android:text="Vaciar" />
         </LinearLayout>
 
         <ListView
             android:id="@+id/listPlaylist"
             android:layout_width="match_parent"
-            android:layout_height="320dp"
-            android:dividerHeight="1dp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="Código derivado conceptualmente de VlcFreemote (GPL-3.0). Sin telemetría ni permisos ajenos a Internet."
-            android:textSize="12sp" />
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:dividerHeight="1dp"
+            android:scrollbars="vertical" />
 
     </LinearLayout>
-</ScrollView>
+
+</LinearLayout>
