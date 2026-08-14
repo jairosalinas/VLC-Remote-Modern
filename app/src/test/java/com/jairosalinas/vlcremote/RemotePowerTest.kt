@@ -36,6 +36,29 @@ class RemotePowerTest {
     }
 
     @Test
+    fun androidSshConfigNeverOffersCurve25519Kex() {
+        val config = RemotePowerController.createAndroidCompatibleConfig(apiLevel = 36)
+        val names = config.keyExchangeFactories.map { it.name }
+
+        assertFalse(names.contains("curve25519-sha256"))
+        assertFalse(names.contains("curve25519-sha256@libssh.org"))
+        assertTrue(names.contains("ecdh-sha2-nistp256"))
+        assertTrue(names.contains("diffie-hellman-group14-sha256"))
+    }
+
+    @Test
+    fun preApi33AndroidSshConfigAvoidsEd25519HostKeys() {
+        val config = RemotePowerController.createAndroidCompatibleConfig(apiLevel = 32)
+        assertFalse(config.keyAlgorithms.any { it.name.contains("ed25519", ignoreCase = true) })
+    }
+
+    @Test
+    fun modernAndroidSshConfigKeepsEd25519HostKeys() {
+        val config = RemotePowerController.createAndroidCompatibleConfig(apiLevel = 36)
+        assertTrue(config.keyAlgorithms.any { it.name.equals("ssh-ed25519", ignoreCase = true) })
+    }
+
+    @Test
     fun rsaFingerprintIsStableSha256Format() {
         val generator = KeyPairGenerator.getInstance("RSA")
         generator.initialize(2048)
