@@ -1,4 +1,4 @@
-name: Build VLC Remote Modern
+name: Validate VLC Remote Modern
 
 on:
   push:
@@ -8,9 +8,9 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -33,13 +33,22 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Build installable debug APK
-        run: gradle --no-daemon :app:assembleDebug
+      - name: Compile, unit test and lint
+        run: gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: VLC-Remote-Modern-1.0-rc1-debug
+          name: VLC-Remote-Modern-1.0-rc2-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: VLC-Remote-Modern-rc2-lint
+          path: app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
           retention-days: 14
