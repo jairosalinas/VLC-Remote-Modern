@@ -17,41 +17,60 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
-final class VlcHttpClient {
-    static final class Status {
-        final String state;
-        final String title;
-        final int timeSeconds;
-        final int lengthSeconds;
-        final int volume;
-        final double position;
+public final class VlcHttpClient {
+    public static final class Status {
+        public final String state;
+        public final String title;
+        public final int timeSeconds;
+        public final int lengthSeconds;
+        public final int volume;
+        public final double position;
+        public final int currentPlaylistId;
 
-        Status(String state, String title, int timeSeconds, int lengthSeconds, int volume, double position) {
+        Status(String state, String title, int timeSeconds, int lengthSeconds,
+               int volume, double position, int currentPlaylistId) {
             this.state = state;
             this.title = title;
             this.timeSeconds = timeSeconds;
             this.lengthSeconds = lengthSeconds;
             this.volume = volume;
             this.position = position;
+            this.currentPlaylistId = currentPlaylistId;
         }
     }
 
-    static final class PlaylistItem {
-        final int id;
-        final String name;
+    public static final class PlaylistItem {
+        public final int id;
+        public final String name;
+        public final boolean current;
 
-        PlaylistItem(int id, String name) {
+        PlaylistItem(int id, String name, boolean current) {
             this.id = id;
             this.name = name;
+            this.current = current;
         }
 
         @Override public String toString() { return name; }
     }
 
+    public static final class BrowserEntry {
+        public final boolean directory;
+        public final String name;
+        public final String uri;
+        public final String path;
+
+        BrowserEntry(boolean directory, String name, String uri, String path) {
+            this.directory = directory;
+            this.name = name;
+            this.uri = uri;
+            this.path = path;
+        }
+    }
+
     private final String baseUrl;
     private final String authorization;
 
-    VlcHttpClient(String host, int port, String password) {
+    public VlcHttpClient(String host, int port, String password) {
         String cleanHost = host == null ? "" : host.trim();
         if (cleanHost.startsWith("http://")) cleanHost = cleanHost.substring(7);
         if (cleanHost.startsWith("https://")) cleanHost = cleanHost.substring(8);
@@ -62,13 +81,14 @@ final class VlcHttpClient {
                 rawAuth.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
     }
 
-    Status getStatus() throws IOException, JSONException {
+    public Status getStatus() throws IOException, JSONException {
         JSONObject root = new JSONObject(get("/requests/status.json"));
         String state = root.optString("state", "unknown");
         int time = root.optInt("time", 0);
         int length = root.optInt("length", 0);
         int volume = root.optInt("volume", 0);
         double position = root.optDouble("position", 0.0);
+        int currentPlaylistId = root.optInt("currentplid", -1);
 
         String title = "Nada reproduciéndose";
         JSONObject information = root.optJSONObject("information");
@@ -85,46 +105,66 @@ final class VlcHttpClient {
                 }
             }
         }
-        return new Status(state, title, time, length, volume, position);
+        return new Status(state, title, time, length, volume, position, currentPlaylistId);
     }
 
-    List<PlaylistItem> getPlaylist() throws IOException, JSONException {
+    public List<PlaylistItem> getPlaylist() throws IOException, JSONException {
         JSONObject root = new JSONObject(get("/requests/playlist.json"));
         List<PlaylistItem> items = new ArrayList<>();
         collectPlaylistItems(root.optJSONArray("children"), items);
         return items;
     }
 
-    void togglePlay() throws IOException { command("pl_pause", null, null); }
-    void stop() throws IOException { command("pl_stop", null, null); }
-    void previous() throws IOException { command("pl_previous", null, null); }
-    void next() throws IOException { command("pl_next", null, null); }
-    void toggleFullscreen() throws IOException { command("fullscreen", null, null); }
-    void clearPlaylist() throws IOException { command("pl_empty", null, null); }
+    public List<BrowserEntry> browse(String uri) throws IOException, JSONException {
+        String requested = uri == null || uri.trim().isEmpty() ? "file://~" : uri.trim();
+        JSONObject root = new JSONObject(get("/requests/browse.json?uri=" + urlEncode(requested)));
+        JSONArray elements = root.optJSONArray("element");
+        List<BrowserEntry> out = new ArrayList<>();
+        if (elements == null) return out;
 
-    void playItem(int id) throws IOException {
+        for (int i = 0; i < elements.length(); i++) {
+            JSONObject item = elements.optJSONObject(i);
+            if (item == null) continue;
+            String type = item.optString("type", "unknown");
+            String name = firstNonBlank(item.optString("name", ""), item.optString("path", ""));
+            String itemUri = item.optString("uri", "");
+            String path = item.optString("path", "");
+            if (name.isEmpty()) continue;
+            out.add(new BrowserEntry("dir".equals(type), name, itemUri, path));
+        }
+        return out;
+    }
+
+    public void togglePlay() throws IOException { command("pl_pause", null, null); }
+    public void stop() throws IOException { command("pl_stop", null, null); }
+    public void previous() throws IOException { command("pl_previous", null, null); }
+    public void next() throws IOException { command("pl_next", null, null); }
+    public void toggleFullscreen() throws IOException { command("fullscreen", null, null); }
+    public void clearPlaylist() throws IOException { command("pl_empty", null, null); }
+
+    public void playItem(int id) throws IOException {
         command("pl_play", "id", Integer.toString(id));
     }
 
-    void playInput(String input) throws IOException {
+    public void playInput(String input) throws IOException {
         command("in_play", "input", requireInput(input));
     }
 
-    void enqueueInput(String input) throws IOException {
+    public void enqueueInput(String input) throws IOException {
         command("in_enqueue", "input", requireInput(input));
     }
 
-    void seekSeconds(int seconds) throws IOException {
+    public void seekSeconds(int seconds) throws IOException {
         String value = (seconds >= 0 ? "+" : "") + seconds;
         command("seek", "val", value);
     }
 
-    void seekPercent(double percent) throws IOException {
+    public void seekPercent(double percent) throws IOException {
         double clamped = Math.max(0.0, Math.min(100.0, percent));
         command("seek", "val", String.format(java.util.Locale.US, "%.2f%%", clamped));
     }
 
-    void setVolume(int volume) throws IOException {
+    public void setVolume(int volume) throws IOException {
         int clamped = Math.max(0, Math.min(512, volume));
         command("volume", "val", Integer.toString(clamped));
     }
@@ -181,7 +221,8 @@ final class VlcHttpClient {
                     node.optString("name", ""),
                     node.optString("uri", ""),
                     "Elemento " + id);
-            out.add(new PlaylistItem(id, name));
+            boolean current = "current".equals(node.optString("current", ""));
+            out.add(new PlaylistItem(id, name, current));
         }
     }
 
