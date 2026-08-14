@@ -1,6 +1,7 @@
 package com.jairosalinas.vlcremote
 
 import android.app.Application
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -10,6 +11,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.dropWhile
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -35,6 +38,10 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
         val browserUri: String = "file://~",
         val browserEntries: List<VlcHttpClient.BrowserEntry> = emptyList(),
         val loadingBrowser: Boolean = false,
+        val phoneShareStarting: Boolean = false,
+        val phoneShareRunning: Boolean = false,
+        val phoneShareUrl: String? = null,
+        val phoneShareFileName: String? = null,
         val lastError: String? = null
     )
 
@@ -51,6 +58,17 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
         if (saved.host.isNotBlank()) {
             createClient(saved)
             startPolling()
+        }
+        viewModelScope.launch {
+            PhoneMediaShareService.state.collect { share ->
+                _uiState.value = _uiState.value.copy(
+                    phoneShareStarting = share.starting,
+                    phoneShareRunning = share.running,
+                    phoneShareUrl = share.url,
+                    phoneShareFileName = share.fileName,
+                    lastError = share.error ?: _uiState.value.lastError
+                )
+            }
         }
     }
 
@@ -176,7 +194,47 @@ class VlcViewModel(application: Application) : AndroidViewModel(application) {
 
     fun enqueueBrowserEntry(entry: VlcHttpClient.BrowserEntry) {
         val target = entry.uri.ifBlank { entry.path }
-        if (entry.directory) playInput(target, enqueue = true) else playInput(target, enqueue = true)
+        playInput(target, enqueue = true)
+    }
+
+    fun startPhoneShare(uri: Uri) {
+        val settings = _uiState.value.settings
+        if (settings.host.isBlank()) {
+            setError("Configura primero el servidor VLC")
+            return
+        }
+        _uiState.value = _uiState.value.copy(phoneShareStarting = true, lastError = null)
+
+        val application = getApplication<Application>()
+        val intent = Intent(application, PhoneMediaShareService::class.java).apply {
+            action = PhoneMediaShareService.ACTION_START
+            putExtra(PhoneMediaShareService.EXTRA_URI, uri.toString())
+            putExtra(PhoneMediaShareService.EXTRA_VLC_HOST, settings.host)
+            putExtra(PhoneMediaShareService.EXTRA_VLC_PORT, settings.port)
+        }
+        application.startForegroundService(intent)
+
+        viewModelScope.launch {
+            val result = PhoneMediaShareService.state
+                .dropWhile { it.running }
+                .first { it.running || it.error != null }
+            if (result.error != null) {
+                setError(result.error)
+            } else {
+                result.url?.let { playInput(it) }
+            }
+        }
+    }
+
+    fun stopPhoneShare() {
+        val application = getApplication<Application>()
+        application.stopService(Intent(application, PhoneMediaShareService::class.java))
+        _uiState.value = _uiState.value.copy(
+            phoneShareStarting = false,
+            phoneShareRunning = false,
+            phoneShareUrl = null,
+            phoneShareFileName = null
+        )
     }
 
     fun togglePlay() = runCommand(refresh = true) { it.togglePlay() }
