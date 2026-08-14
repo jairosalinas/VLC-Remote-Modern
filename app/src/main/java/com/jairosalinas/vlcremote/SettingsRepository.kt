@@ -18,21 +18,52 @@ class SettingsRepository(context: Context) {
         val host: String = "",
         val port: Int = 8080,
         val password: String = "",
-        val theme: ThemeMode = ThemeMode.SYSTEM
-    )
+        val theme: ThemeMode = ThemeMode.SYSTEM,
+        val remotePowerEnabled: Boolean = false,
+        val remoteServerPlatform: RemoteServerPlatform = RemoteServerPlatform.LINUX,
+        val sshUseVlcHost: Boolean = true,
+        val sshHost: String = "",
+        val sshPort: Int = 22,
+        val sshUsername: String = "",
+        val sshAuthMode: SshAuthMode = SshAuthMode.PASSWORD,
+        val sshPassword: String = "",
+        val sshPrivateKeyUri: String = "",
+        val sshPrivateKeyPassphrase: String = "",
+        val sshStartCommand: String = RemoteLaunchProfiles.linux.startCommand,
+        val sshStopCommand: String = RemoteLaunchProfiles.linux.stopCommand,
+        val sshCheckCommand: String = RemoteLaunchProfiles.linux.checkCommand,
+        val sshHostFingerprint: String = ""
+    ) {
+        fun resolvedSshHost(): String = if (sshUseVlcHost) host.trim() else sshHost.trim()
+    }
 
     enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
     fun load(): Settings {
-        val theme = runCatching {
-            ThemeMode.valueOf(prefs.getString(KEY_THEME, ThemeMode.SYSTEM.name) ?: ThemeMode.SYSTEM.name)
-        }.getOrDefault(ThemeMode.SYSTEM)
+        val theme = enumValueOrDefault(KEY_THEME, ThemeMode.SYSTEM)
+        val platform = enumValueOrDefault(KEY_REMOTE_PLATFORM, RemoteServerPlatform.LINUX)
+        val authMode = enumValueOrDefault(KEY_SSH_AUTH_MODE, SshAuthMode.PASSWORD)
+        val defaults = RemoteLaunchProfiles.forPlatform(platform)
 
         return Settings(
             host = prefs.getString(KEY_HOST, "") ?: "",
             port = prefs.getInt(KEY_PORT, 8080),
-            password = loadPassword(),
-            theme = theme
+            password = loadVlcPassword(),
+            theme = theme,
+            remotePowerEnabled = prefs.getBoolean(KEY_REMOTE_POWER_ENABLED, false),
+            remoteServerPlatform = platform,
+            sshUseVlcHost = prefs.getBoolean(KEY_SSH_USE_VLC_HOST, true),
+            sshHost = prefs.getString(KEY_SSH_HOST, "") ?: "",
+            sshPort = prefs.getInt(KEY_SSH_PORT, 22),
+            sshUsername = prefs.getString(KEY_SSH_USERNAME, "") ?: "",
+            sshAuthMode = authMode,
+            sshPassword = loadSecret(KEY_SSH_PASSWORD_CIPHERTEXT, KEY_SSH_PASSWORD_IV),
+            sshPrivateKeyUri = prefs.getString(KEY_SSH_PRIVATE_KEY_URI, "") ?: "",
+            sshPrivateKeyPassphrase = loadSecret(KEY_SSH_KEY_PASSPHRASE_CIPHERTEXT, KEY_SSH_KEY_PASSPHRASE_IV),
+            sshStartCommand = prefs.getString(KEY_SSH_START_COMMAND, defaults.startCommand) ?: defaults.startCommand,
+            sshStopCommand = prefs.getString(KEY_SSH_STOP_COMMAND, defaults.stopCommand) ?: defaults.stopCommand,
+            sshCheckCommand = prefs.getString(KEY_SSH_CHECK_COMMAND, defaults.checkCommand) ?: defaults.checkCommand,
+            sshHostFingerprint = prefs.getString(KEY_SSH_HOST_FINGERPRINT, "") ?: ""
         )
     }
 
@@ -41,43 +72,75 @@ class SettingsRepository(context: Context) {
             putString(KEY_HOST, settings.host.trim())
             putInt(KEY_PORT, settings.port)
             putString(KEY_THEME, settings.theme.name)
+            putBoolean(KEY_REMOTE_POWER_ENABLED, settings.remotePowerEnabled)
+            putString(KEY_REMOTE_PLATFORM, settings.remoteServerPlatform.name)
+            putBoolean(KEY_SSH_USE_VLC_HOST, settings.sshUseVlcHost)
+            putString(KEY_SSH_HOST, settings.sshHost.trim())
+            putInt(KEY_SSH_PORT, settings.sshPort)
+            putString(KEY_SSH_USERNAME, settings.sshUsername.trim())
+            putString(KEY_SSH_AUTH_MODE, settings.sshAuthMode.name)
+            putString(KEY_SSH_PRIVATE_KEY_URI, settings.sshPrivateKeyUri)
+            putString(KEY_SSH_START_COMMAND, settings.sshStartCommand)
+            putString(KEY_SSH_STOP_COMMAND, settings.sshStopCommand)
+            putString(KEY_SSH_CHECK_COMMAND, settings.sshCheckCommand)
+            putString(KEY_SSH_HOST_FINGERPRINT, settings.sshHostFingerprint.trim())
         }
-        savePassword(settings.password)
+        saveSecret(KEY_PASSWORD_CIPHERTEXT, KEY_PASSWORD_IV, settings.password)
+        saveSecret(KEY_SSH_PASSWORD_CIPHERTEXT, KEY_SSH_PASSWORD_IV, settings.sshPassword)
+        saveSecret(
+            KEY_SSH_KEY_PASSPHRASE_CIPHERTEXT,
+            KEY_SSH_KEY_PASSPHRASE_IV,
+            settings.sshPrivateKeyPassphrase
+        )
+        prefs.edit { remove(KEY_LEGACY_PASSWORD) }
     }
 
-    private fun loadPassword(): String {
-        val ciphertext = prefs.getString(KEY_PASSWORD_CIPHERTEXT, null)
-        val iv = prefs.getString(KEY_PASSWORD_IV, null)
-        if (!ciphertext.isNullOrEmpty() && !iv.isNullOrEmpty()) {
-            return runCatching { decrypt(ciphertext, iv) }.getOrDefault("")
-        }
+    fun clearSshHostFingerprint() {
+        prefs.edit { remove(KEY_SSH_HOST_FINGERPRINT) }
+    }
 
-        // Transparent migration from alpha/RC1, where the password was plain SharedPreferences.
+    private inline fun <reified T : Enum<T>> enumValueOrDefault(key: String, default: T): T {
+        return runCatching {
+            enumValueOf<T>(prefs.getString(key, default.name) ?: default.name)
+        }.getOrDefault(default)
+    }
+
+    private fun loadVlcPassword(): String {
+        val encrypted = loadSecret(KEY_PASSWORD_CIPHERTEXT, KEY_PASSWORD_IV)
+        if (encrypted.isNotEmpty()) return encrypted
+
+        // Transparent migration from alpha/RC1, where the VLC password was plain SharedPreferences.
         val legacy = prefs.getString(KEY_LEGACY_PASSWORD, "") ?: ""
         if (legacy.isNotEmpty()) {
-            runCatching { savePassword(legacy) }
+            runCatching { saveSecret(KEY_PASSWORD_CIPHERTEXT, KEY_PASSWORD_IV, legacy) }
+            prefs.edit { remove(KEY_LEGACY_PASSWORD) }
             return legacy
         }
         return ""
     }
 
-    private fun savePassword(password: String) {
-        if (password.isEmpty()) {
+    private fun loadSecret(ciphertextKey: String, ivKey: String): String {
+        val ciphertext = prefs.getString(ciphertextKey, null)
+        val iv = prefs.getString(ivKey, null)
+        if (ciphertext.isNullOrEmpty() || iv.isNullOrEmpty()) return ""
+        return runCatching { decrypt(ciphertext, iv) }.getOrDefault("")
+    }
+
+    private fun saveSecret(ciphertextKey: String, ivKey: String, value: String) {
+        if (value.isEmpty()) {
             prefs.edit {
-                remove(KEY_PASSWORD_CIPHERTEXT)
-                remove(KEY_PASSWORD_IV)
-                remove(KEY_LEGACY_PASSWORD)
+                remove(ciphertextKey)
+                remove(ivKey)
             }
             return
         }
 
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
-        val encrypted = cipher.doFinal(password.toByteArray(Charsets.UTF_8))
+        val encrypted = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
         prefs.edit {
-            putString(KEY_PASSWORD_CIPHERTEXT, Base64.encodeToString(encrypted, Base64.NO_WRAP))
-            putString(KEY_PASSWORD_IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
-            remove(KEY_LEGACY_PASSWORD)
+            putString(ciphertextKey, Base64.encodeToString(encrypted, Base64.NO_WRAP))
+            putString(ivKey, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
         }
     }
 
@@ -118,6 +181,24 @@ class SettingsRepository(context: Context) {
         const val KEY_LEGACY_PASSWORD = "password"
         const val KEY_PASSWORD_CIPHERTEXT = "password_ciphertext_v2"
         const val KEY_PASSWORD_IV = "password_iv_v2"
+
+        const val KEY_REMOTE_POWER_ENABLED = "remote_power_enabled"
+        const val KEY_REMOTE_PLATFORM = "remote_platform"
+        const val KEY_SSH_USE_VLC_HOST = "ssh_use_vlc_host"
+        const val KEY_SSH_HOST = "ssh_host"
+        const val KEY_SSH_PORT = "ssh_port"
+        const val KEY_SSH_USERNAME = "ssh_username"
+        const val KEY_SSH_AUTH_MODE = "ssh_auth_mode"
+        const val KEY_SSH_PASSWORD_CIPHERTEXT = "ssh_password_ciphertext_v1"
+        const val KEY_SSH_PASSWORD_IV = "ssh_password_iv_v1"
+        const val KEY_SSH_PRIVATE_KEY_URI = "ssh_private_key_uri"
+        const val KEY_SSH_KEY_PASSPHRASE_CIPHERTEXT = "ssh_key_passphrase_ciphertext_v1"
+        const val KEY_SSH_KEY_PASSPHRASE_IV = "ssh_key_passphrase_iv_v1"
+        const val KEY_SSH_START_COMMAND = "ssh_start_command"
+        const val KEY_SSH_STOP_COMMAND = "ssh_stop_command"
+        const val KEY_SSH_CHECK_COMMAND = "ssh_check_command"
+        const val KEY_SSH_HOST_FINGERPRINT = "ssh_host_fingerprint"
+
         const val KEY_ALIAS = "vlc_remote_settings_aes_v1"
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
         const val TRANSFORMATION = "AES/GCM/NoPadding"
