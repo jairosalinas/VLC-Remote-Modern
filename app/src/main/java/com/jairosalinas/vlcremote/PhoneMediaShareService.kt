@@ -113,11 +113,14 @@ class PhoneMediaShareService : Service() {
         acceptThread = Thread({
             try {
                 val localAddress = resolveLocalAddress(vlcHost, vlcPort)
-                val server = ServerSocket(0)
+                val server = ServerSocket()
                 server.reuseAddress = true
+                server.bind(InetSocketAddress(localAddress, 0))
                 serverSocket = server
+
                 val token = randomToken()
-                val displayHost = if (localAddress.contains(':')) "[$localAddress]" else localAddress
+                val localAddressText = localAddress.hostAddress.orEmpty().substringBefore('%')
+                val displayHost = if (localAddressText.contains(':')) "[$localAddressText]" else localAddressText
                 val url = "http://$displayHost:${server.localPort}/$token/media"
 
                 mutableState.value = ShareState(
@@ -170,7 +173,7 @@ class PhoneMediaShareService : Service() {
         return FileMetadata(finalName, mime, size)
     }
 
-    private fun resolveLocalAddress(vlcHost: String, vlcPort: Int): String {
+    private fun resolveLocalAddress(vlcHost: String, vlcPort: Int): InetAddress {
         val cleanHost = vlcHost.trim()
             .removePrefix("http://")
             .removePrefix("https://")
@@ -181,11 +184,10 @@ class PhoneMediaShareService : Service() {
         DatagramSocket().use { socket ->
             socket.connect(InetSocketAddress(cleanHost, vlcPort))
             val address: InetAddress = socket.localAddress
-            val host = address.hostAddress
-            require(!host.isNullOrBlank() && !address.isAnyLocalAddress && !address.isLoopbackAddress) {
+            require(!address.isAnyLocalAddress && !address.isLoopbackAddress && !address.hostAddress.isNullOrBlank()) {
                 "No se pudo determinar una IP del teléfono alcanzable por VLC"
             }
-            return host.substringBefore('%')
+            return address
         }
     }
 
@@ -325,16 +327,14 @@ class PhoneMediaShareService : Service() {
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Reproducción desde el teléfono",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Mantiene disponible temporalmente el archivo que VLC está reproduciendo"
-            }
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "Reproducción desde el teléfono",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "Mantiene disponible temporalmente el archivo que VLC está reproduciendo"
         }
+        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
     private fun buildNotification(text: String): android.app.Notification {
