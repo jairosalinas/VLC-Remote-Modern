@@ -1,7 +1,7 @@
 package com.jairosalinas.vlcremote
 
 import android.content.Context
-import android.net.Uri
+import androidx.core.net.toUri
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.common.Buffer
 import net.schmizz.sshj.transport.verification.HostKeyVerifier
@@ -130,7 +130,7 @@ class RemotePowerController(private val context: Context) {
     }
 
     private fun authenticatePrivateKey(ssh: SSHClient, settings: SettingsRepository.Settings) {
-        val uri = Uri.parse(settings.sshPrivateKeyUri)
+        val uri = settings.sshPrivateKeyUri.toUri()
         val temp = File.createTempFile("vlc_remote_key_", ".key", context.cacheDir)
         try {
             context.contentResolver.openInputStream(uri)?.use { input ->
