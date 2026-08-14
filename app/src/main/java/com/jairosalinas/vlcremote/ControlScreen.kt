@@ -14,17 +14,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
-import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -41,7 +41,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -139,7 +138,7 @@ internal fun ControlScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = vm::toggleMute) {
                             Icon(
-                                if (ui.muted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                                if (ui.muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
                                 contentDescription = if (ui.muted) "Restaurar sonido" else "Silenciar"
                             )
                         }
@@ -170,7 +169,7 @@ internal fun ControlScreen(
                         Text("Playlist", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Text("${ui.playlist.size} elementos", style = MaterialTheme.typography.bodyMedium)
                     }
-                    Icon(Icons.Default.KeyboardArrowRight, contentDescription = "Abrir playlist")
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Abrir playlist")
                 }
             }
         }
